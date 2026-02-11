@@ -48,6 +48,8 @@ Download the `.zip` file from the releases page and extract `gitignore.exe` to a
 go install github.com/polliard/gitignore/src/cmd/gitignore@latest
 ```
 
+Ensure `$GOPATH/bin` (or `$HOME/go/bin`) is in your PATH.
+
 Or clone and build:
 
 ```bash

@@ -11,9 +11,8 @@ import (
 	"github.com/polliard/gitignore/src/pkg/source"
 )
 
-const (
-	version = "1.0.0"
-)
+// version is set via ldflags at build time
+var version = "dev"
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
