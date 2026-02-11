@@ -13,21 +13,37 @@ const (
 	// DefaultTemplateURL is the default GitHub repository for gitignore templates
 	DefaultTemplateURL = "https://github.com/github/gitignore"
 
+	// ToptalTemplateURL is the Toptal gitignore API URL
+	ToptalTemplateURL = "https://www.toptal.com/developers/gitignore/api"
+
 	// ConfigFileName is the name of the config file
 	ConfigFileName = "gitignorerc"
 )
 
 // Config holds the application configuration
 type Config struct {
-	TemplateURL  string
-	DefaultTypes []string
+	TemplateURL        string   // GitHub repository URL for templates
+	EnableToptal       bool     // Enable Toptal gitignore API as fallback source
+	LocalTemplatesPath string   // Path to local templates directory
+	DefaultTypes       []string // Default types for init command
+}
+
+// DefaultLocalTemplatesPath returns the default local templates path
+func DefaultLocalTemplatesPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".config", "gitignore", "templates")
 }
 
 // DefaultConfig returns a config with default values
 func DefaultConfig() *Config {
 	return &Config{
-		TemplateURL:  DefaultTemplateURL,
-		DefaultTypes: []string{},
+		TemplateURL:        DefaultTemplateURL,
+		EnableToptal:       false,
+		LocalTemplatesPath: DefaultLocalTemplatesPath(),
+		DefaultTypes:       []string{},
 	}
 }
 
@@ -105,12 +121,29 @@ func (c *Config) loadFromFile(path string) error {
 		switch key {
 		case "gitignore.template.url":
 			c.TemplateURL = value
+		case "enable.toptal.gitignore":
+			c.EnableToptal = parseBool(value)
+		case "gitignore.local-templates-path":
+			// Expand ~ to home directory
+			if strings.HasPrefix(value, "~/") {
+				home, err := os.UserHomeDir()
+				if err == nil {
+					value = filepath.Join(home, value[2:])
+				}
+			}
+			c.LocalTemplatesPath = value
 		case "gitignore.default-types":
 			c.DefaultTypes = parseTypesList(value)
 		}
 	}
 
 	return scanner.Err()
+}
+
+// parseBool parses a boolean value from string
+func parseBool(value string) bool {
+	v := strings.ToLower(value)
+	return v == "true" || v == "yes" || v == "1" || v == "on"
 }
 
 // parseTypesList parses a comma-separated list of types

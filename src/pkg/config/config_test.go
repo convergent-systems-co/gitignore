@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -175,5 +176,106 @@ func TestLoadDefaultTypesEmpty(t *testing.T) {
 
 	if len(cfg.DefaultTypes) != 0 {
 		t.Errorf("expected empty default types, got %v", cfg.DefaultTypes)
+	}
+}
+
+func TestLoadEnableToptal(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    string
+		expected bool
+	}{
+		{"true", "true", true},
+		{"True", "True", true},
+		{"TRUE", "TRUE", true},
+		{"yes", "yes", true},
+		{"1", "1", true},
+		{"on", "on", true},
+		{"false", "false", false},
+		{"no", "no", false},
+		{"0", "0", false},
+		{"off", "off", false},
+		{"random", "random", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			configPath := filepath.Join(tmpDir, "testconfig")
+
+			content := fmt.Sprintf("enable.toptal.gitignore = %s\n", tt.value)
+			if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+				t.Fatalf("failed to create test config: %v", err)
+			}
+
+			cfg, err := LoadFromPath(configPath)
+			if err != nil {
+				t.Fatalf("failed to load config: %v", err)
+			}
+
+			if cfg.EnableToptal != tt.expected {
+				t.Errorf("enable.toptal.gitignore = %s: expected %v, got %v", tt.value, tt.expected, cfg.EnableToptal)
+			}
+		})
+	}
+}
+
+func TestDefaultConfigEnableToptalFalse(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.EnableToptal != false {
+		t.Errorf("expected default EnableToptal to be false, got %v", cfg.EnableToptal)
+	}
+}
+
+func TestLoadLocalTemplatesPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "testconfig")
+
+	content := `gitignore.local-templates-path = /custom/templates/path
+`
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to create test config: %v", err)
+	}
+
+	cfg, err := LoadFromPath(configPath)
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+
+	expected := "/custom/templates/path"
+	if cfg.LocalTemplatesPath != expected {
+		t.Errorf("expected LocalTemplatesPath %s, got %s", expected, cfg.LocalTemplatesPath)
+	}
+}
+
+func TestLoadLocalTemplatesPathWithTilde(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "testconfig")
+
+	content := `gitignore.local-templates-path = ~/my-templates
+`
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to create test config: %v", err)
+	}
+
+	cfg, err := LoadFromPath(configPath)
+	if err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+
+	home, _ := os.UserHomeDir()
+	expected := filepath.Join(home, "my-templates")
+	if cfg.LocalTemplatesPath != expected {
+		t.Errorf("expected LocalTemplatesPath %s, got %s", expected, cfg.LocalTemplatesPath)
+	}
+}
+
+func TestDefaultLocalTemplatesPath(t *testing.T) {
+	cfg := DefaultConfig()
+
+	home, _ := os.UserHomeDir()
+	expected := filepath.Join(home, ".config", "gitignore", "templates")
+	if cfg.LocalTemplatesPath != expected {
+		t.Errorf("expected default LocalTemplatesPath %s, got %s", expected, cfg.LocalTemplatesPath)
 	}
 }
