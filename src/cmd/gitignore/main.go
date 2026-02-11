@@ -198,26 +198,10 @@ func cmdAdd(cfg *config.Config, templateType string) error {
 		return fmt.Errorf("failed to create source manager: %w", err)
 	}
 
-	var file *source.TemplateFile
-	var content string
-
-	// Check if templateType has a source prefix (e.g., "github/Go" or "toptal/rust")
-	if strings.HasPrefix(templateType, "local/") ||
-		strings.HasPrefix(templateType, "github/") ||
-		strings.HasPrefix(templateType, "toptal/") {
-		parts := strings.SplitN(templateType, "/", 2)
-		sourceName := parts[0]
-		templateName := parts[1]
-		file, content, err = sm.GetFromSource(sourceName, templateName)
-		if err != nil {
-			return fmt.Errorf("failed to get '%s' from %s: %w", templateName, sourceName, err)
-		}
-	} else {
-		// No source prefix, use default priority order
-		file, content, err = sm.Get(templateType)
-		if err != nil {
-			return err
-		}
+	// GetAny handles source prefixes automatically (e.g., "github/rust" vs "rust")
+	file, content, err := sm.GetAny(templateType)
+	if err != nil {
+		return err
 	}
 
 	// Get current working directory
@@ -297,8 +281,8 @@ func cmdInit(cfg *config.Config) error {
 			continue
 		}
 
-		// Get the template (checks local first, then remote sources)
-		file, content, err := sm.Get(templateType)
+		// GetAny handles source prefixes automatically (e.g., "github/rust" vs "rust")
+		file, content, err := sm.GetAny(templateType)
 		if err != nil {
 			fmt.Printf("  Warning: template '%s' not found\n", templateType)
 			continue

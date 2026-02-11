@@ -137,6 +137,44 @@ func (sm *SourceManager) GetFromSource(sourceName, templateName string) (*Templa
 	return nil, "", fmt.Errorf("unknown source: %s", sourceName)
 }
 
+// SourceNames returns the names of all configured sources
+func (sm *SourceManager) SourceNames() []string {
+	names := make([]string, len(sm.sources))
+	for i, source := range sm.sources {
+		names[i] = source.Name()
+	}
+	return names
+}
+
+// ParseSourcePrefix checks if the template type starts with a known source name
+// Returns (sourceName, templateName, hasPrefix)
+// e.g., "github/global/macos" -> ("github", "global/macos", true)
+// e.g., "go" -> ("", "go", false)
+func (sm *SourceManager) ParseSourcePrefix(templateType string) (string, string, bool) {
+	parts := strings.SplitN(templateType, "/", 2)
+	if len(parts) < 2 {
+		return "", templateType, false
+	}
+	potentialSource := parts[0]
+	for _, source := range sm.sources {
+		if source.Name() == potentialSource {
+			return potentialSource, parts[1], true
+		}
+	}
+	return "", templateType, false
+}
+
+// GetAny retrieves a template, handling source prefixes automatically
+// If templateType has a source prefix (e.g., "github/rust"), fetches from that source
+// Otherwise, uses priority order (local -> GitHub -> Toptal)
+func (sm *SourceManager) GetAny(templateType string) (*TemplateFile, string, error) {
+	sourceName, templateName, hasPrefix := sm.ParseSourcePrefix(templateType)
+	if hasPrefix {
+		return sm.GetFromSource(sourceName, templateName)
+	}
+	return sm.Get(templateType)
+}
+
 // Find finds a template by name, checking local first
 func (sm *SourceManager) Find(name string) (*TemplateFile, error) {
 	// Always try local first
