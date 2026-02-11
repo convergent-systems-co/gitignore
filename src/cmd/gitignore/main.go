@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime/debug"
 	"sort"
 	"strings"
 
@@ -11,8 +12,20 @@ import (
 	"github.com/polliard/gitignore/src/pkg/source"
 )
 
-// version is set via ldflags at build time
+// version is set via ldflags at build time, or detected from module info
 var version = "dev"
+
+func getVersion() string {
+	// If version was set via ldflags, use it
+	if version != "dev" {
+		return version
+	}
+	// Otherwise try to get version from module info (set by go install @version)
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return version
+}
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -60,7 +73,7 @@ func run(args []string) error {
 		printUsage()
 		return nil
 	case "--version", "-v", "version":
-		fmt.Printf("gitignore version %s\n", version)
+		fmt.Printf("gitignore version %s\n", getVersion())
 		return nil
 	default:
 		return fmt.Errorf("unknown command: %s\nRun 'gitignore --help' for usage", cmd)
