@@ -101,11 +101,9 @@ toptal/rust-analyzer
 # Add a template (uses priority order: local -> GitHub -> Toptal)
 gitignore add go
 
-# Add a template from a subdirectory
-gitignore add global/macos
-
-# Add from a specific source
-gitignore add github/rust
+# Add from a specific source with full path
+gitignore add github/go
+gitignore add github/global/macos
 gitignore add toptal/rust
 gitignore add local/myproject
 ```
@@ -168,7 +166,7 @@ enable.toptal.gitignore = true
 gitignore.local-templates-path = ~/.config/gitignore/templates
 
 # Default types for 'init' command
-gitignore.default-types = Go, Global/macOS, Global/VisualStudioCode
+gitignore.default-types = github/go, github/global/macos, github/global/visualstudiocode
 ```
 
 ### Configuration Options
@@ -198,7 +196,7 @@ gitignore.template.url = https://github.com/mycompany/gitignore-templates
 **Set default types for new projects:**
 
 ```ini
-gitignore.default-types = Go, Global/macOS, Global/VisualStudioCode
+gitignore.default-types = github/go, github/global/macos, github/global/visualstudiocode
 ```
 
 ## Local Templates

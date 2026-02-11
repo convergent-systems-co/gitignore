@@ -254,7 +254,7 @@ func cmdDelete(templateType string) error {
 func cmdInit(cfg *config.Config) error {
 	if len(cfg.DefaultTypes) == 0 {
 		fmt.Println("No default types configured.")
-		fmt.Println("Add 'gitignore.default-types = Go, Global/macOS' to your config file.")
+		fmt.Println("Add 'gitignore.default-types = github/go, github/global/macos' to your config file.")
 		return nil
 	}
 
@@ -364,7 +364,7 @@ Configuration:
     gitignore.local-templates-path = ~/.config/gitignore/templates
 
     # Default types for 'init' command
-    gitignore.default-types = Go, Global/macOS, Global/VisualStudioCode
+    gitignore.default-types = github/go, github/global/macos, github/global/visualstudiocode
 
   The ~/.gitignorerc file takes precedence if both exist.
 
