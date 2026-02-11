@@ -41,7 +41,7 @@ gitignore.local-templates-path = ~/.config/gitignore/templates
 # Templates to add when running 'gitignore init'
 # Comma-separated list of template names
 
-gitignore.default-types = Go, Global/macOS, Global/VisualStudioCode
+gitignore.default-types = github/global/macos, github/global/visualstudiocode
 
 # ============================================================================
 # Notes

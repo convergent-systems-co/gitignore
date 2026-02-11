@@ -5,6 +5,7 @@ A command-line tool to manage `.gitignore` files using templates from multiple s
 ## Features
 
 - List all available gitignore templates from multiple sources
+- Search templates by name
 - Add gitignore templates to your project's `.gitignore` file
 - Remove previously added templates
 - **Local template overrides** - create custom templates that take precedence
@@ -57,27 +58,54 @@ make build
 
 ## Usage
 
+For a complete step-by-step guide, see the [Usage Guide](Usage.md).
+
 ### List Available Templates
 
 ```bash
-gitignore --list
+gitignore list
 ```
 
-This will fetch and display all available `.gitignore` templates from the configured source (default: https://github.com/github/gitignore).
+Output shows templates in path format with source prefix:
+
+```
+github/actionscript
+github/ada
+github/go
+github/global/macos
+github/global/visualstudiocode
+local/myproject
+toptal/rust
+toptal/rust-analyzer
+```
+
+### Search Templates
+
+```bash
+gitignore search rust
+```
+
+Output:
+
+```
+github/rust
+toptal/rust
+toptal/rust-analyzer
+```
 
 ### Add a Template
 
 ```bash
 # Add a template (uses priority order: local -> GitHub -> Toptal)
-gitignore add Go
+gitignore add go
 
 # Add a template from a subdirectory
-gitignore add Global/macOS
+gitignore add global/macos
 
-# Add from a specific source when duplicates exist
+# Add from a specific source
 gitignore add github/rust
 gitignore add toptal/rust
-gitignore add local/mytemplate
+gitignore add local/myproject
 ```
 
 This adds the template content to your `.gitignore` file, wrapped in section markers:
@@ -94,14 +122,14 @@ This adds the template content to your `.gitignore` file, wrapped in section mar
 ### Remove a Template
 
 ```bash
-gitignore delete Go
+gitignore delete go
 ```
 
 This removes the specified section from your `.gitignore` file.
 
 ### Initialize with Default Types
 
-If you have configured default types in your config file, you can initialize a `.gitignore` with all of them at once:
+If you have configured default types in your config file:
 
 ```bash
 gitignore init
@@ -118,16 +146,16 @@ gitignore --version
 
 ## Configuration
 
-You can configure the template sources by creating a configuration file at one of these locations:
+Create a configuration file at one of these locations:
 
 - `~/.config/gitignore/gitignorerc`
 - `~/.gitignorerc`
 
+The `~/.gitignorerc` file takes precedence if both exist.
+
 ### Configuration Format
 
 ```ini
-# gitignore configuration
-
 # GitHub repository URL for templates
 gitignore.template.url = https://github.com/github/gitignore
 
@@ -143,49 +171,49 @@ gitignore.default-types = Go, Global/macOS, Global/VisualStudioCode
 
 ### Configuration Options
 
-| Option                           | Description                                          | Default                               |
-| -------------------------------- | ---------------------------------------------------- | ------------------------------------- |
-| `gitignore.template.url`         | GitHub repository URL for templates                  | `https://github.com/github/gitignore` |
-| `enable.toptal.gitignore`        | Enable Toptal API as fallback (true/false)           | `false`                               |
-| `gitignore.local-templates-path` | Directory for local template files                   | `~/.config/gitignore/templates`       |
-| `gitignore.default-types`        | Comma-separated list of templates for `init` command | (empty)                               |
+| Option                           | Description                                    | Default                               |
+| -------------------------------- | ---------------------------------------------- | ------------------------------------- |
+| `gitignore.template.url`         | GitHub repository URL for templates            | `https://github.com/github/gitignore` |
+| `enable.toptal.gitignore`        | Enable Toptal API as fallback (`true`/`false`) | `false`                               |
+| `gitignore.local-templates-path` | Directory for local template files             | `~/.config/gitignore/templates`       |
+| `gitignore.default-types`        | Comma-separated list for `init` command        | (empty)                               |
 
-### Example: Enabling Toptal Fallback
+### Example Configurations
+
+**Enable Toptal fallback:**
 
 ```ini
-# Use GitHub as primary, Toptal as fallback when templates aren't found
 gitignore.template.url = https://github.com/github/gitignore
 enable.toptal.gitignore = true
 ```
 
-### Example: Using a Custom Template Repository
+**Use a custom template repository:**
 
 ```ini
-# Use a company-specific template repository
 gitignore.template.url = https://github.com/mycompany/gitignore-templates
 ```
 
-### Example: Setting Default Types
+**Set default types for new projects:**
 
 ```ini
-# Configure templates to add when running 'gitignore init'
-gitignore.default-types = Go, Global/macOS, Global/VisualStudioCode, Global/JetBrains
+gitignore.default-types = Go, Global/macOS, Global/VisualStudioCode
 ```
 
-## Local Templates (Custom Overrides)
+## Local Templates
 
-You can create custom gitignore templates that **always take precedence** over remote sources.
+Create custom gitignore templates that **always take precedence** over remote sources.
 
 ### Setup
 
-1. Create the local templates directory (or configure a custom path):
+1. Create the local templates directory:
+
    ```bash
    mkdir -p ~/.config/gitignore/templates
    ```
 
-2. Add your custom template files with the `.gitignore` extension:
+2. Add custom template files (must end with `.gitignore`):
+
    ```bash
-   # Example: Create a custom "myproject" template
    cat > ~/.config/gitignore/templates/myproject.gitignore << 'EOF'
    # My company-specific ignores
    .internal/
@@ -194,69 +222,51 @@ You can create custom gitignore templates that **always take precedence** over r
    EOF
    ```
 
-3. Use it just like any other template:
+3. Use it like any other template:
+
    ```bash
    gitignore add myproject
+   # or explicitly:
+   gitignore add local/myproject
    ```
-
-### Custom Templates Path
-
-You can configure a different directory for local templates:
-
-```ini
-# Use a different directory for local templates
-gitignore.local-templates-path = ~/my-gitignore-templates
-```
 
 ### Priority Order
 
 Templates are searched in this order:
 
-1. **Local** (configured path, default: `~/.config/gitignore/templates/`) - Always checked first
-2. **GitHub** - The repository specified in `gitignore.template.url`
+1. **Local** - `~/.config/gitignore/templates/` (or configured path)
+2. **GitHub** - Repository from `gitignore.template.url`
 3. **Toptal** - If `enable.toptal.gitignore = true`
-
-This means:
-- If you have `myproject.gitignore` in your local templates directory, it will be used
-- You can override any built-in template with your own custom version
-- Custom templates don't need to exist in any remote source
 
 ### Specifying a Source
 
-When the same template exists in multiple sources, use the `source/name` syntax to pick a specific one:
+When the same template exists in multiple sources:
 
 ```bash
-# Use Rust from Toptal instead of GitHub
+gitignore search rust
+# github/rust
+# toptal/rust
+# toptal/rust-analyzer
+
+# Use specific source
+gitignore add github/rust
 gitignore add toptal/rust
-
-# Explicitly use the GitHub version
-gitignore add github/Rust
-
-# Use a local custom template
-gitignore add local/myproject
 ```
 
-The `gitignore list` command shows all templates with their source prefix for easy reference.
-
-### Use Cases
-
-- **Company-specific patterns**: Add internal tooling, proprietary files
-- **Extended templates**: Start with a standard template and add more rules
-- **Offline usage**: Keep templates locally for use without internet
-- **Quick prototyping**: Test new ignore patterns before contributing upstream
-
-## Supported Remote Sources
+## Supported Sources
 
 ### GitHub Repositories
 
-Any GitHub repository containing `.gitignore` files can be used:
+Any GitHub repository containing `.gitignore` files:
+
 ```ini
 gitignore.template.url = https://github.com/github/gitignore
 ```
 
 ### Toptal gitignore API
 
-The Toptal gitignore.io API (https://www.toptal.com/developers/gitignore/api) provides additional generated templates. Enable it as a fallback source:
+The [Toptal gitignore.io API](https://www.toptal.com/developers/gitignore/api) provides additional templates:
+
 ```ini
 enable.toptal.gitignore = true
 ```
@@ -265,76 +275,44 @@ enable.toptal.gitignore = true
 
 ### Prerequisites
 
-- Go 1.21 or later
-- Make (optional, for using Makefile)
+- Go 1.23 or later
+- Make (optional)
 
 ### Building
 
 ```bash
-# Build for current platform
-make build
-
-# Build for all platforms
-make build-all
-
-# Run tests
-make test
-
-# Run tests with coverage
-make test-coverage
-
-# Format code
-make fmt
-
-# Clean build artifacts
-make clean
-```
-
-### Running Tests
-
-```bash
-# Run all tests
-make test
-
-# Run short tests (skip integration tests)
-make test-short
-
-# Run only integration tests
-make test-integration
+make build          # Build for current platform
+make build-all      # Build for all platforms
+make test           # Run tests
+make test-coverage  # Run tests with coverage
+make fmt            # Format code
+make clean          # Clean build artifacts
 ```
 
 ### Cross-Platform Builds
 
-The Makefile supports building for multiple platforms:
-
 ```bash
-# Build all platforms
-make build-all
-
-# Build specific platform
-make darwin-amd64    # macOS Intel
-make darwin-arm64    # macOS Silicon
-make linux-amd64     # Linux 64-bit
-make windows-amd64   # Windows 64-bit
+make darwin-amd64   # macOS Intel
+make darwin-arm64   # macOS Silicon
+make linux-amd64    # Linux 64-bit
+make windows-amd64  # Windows 64-bit
 ```
 
 ### Creating a Release
 
-To create a new release:
-
-1. Tag the commit: `git tag v1.0.0`
-2. Push the tag: `git push origin v1.0.0`
-3. GitHub Actions will automatically build and create the release
+1. Tag the commit: `git tag v1.2.0`
+2. Push the tag: `git push origin v1.2.0`
+3. GitHub Actions automatically builds and creates the release
 
 ## How It Works
 
-1. **List**: Fetches the repository tree from GitHub API and filters for `.gitignore` files
-2. **Add**: Downloads the raw content, wraps it in section markers, and appends to `.gitignore`
-3. **Delete**: Scans `.gitignore` for section markers and removes the matching section
+1. **List/Search**: Fetches templates from configured sources, displays as `source/name` paths
+2. **Add**: Downloads content, wraps in section markers, appends to `.gitignore`
+3. **Delete**: Scans for section markers, removes matching section
 
 ### Section Markers
 
-Templates are added with markers to enable selective removal:
+Templates are wrapped for selective removal:
 
 ```gitignore
 ### START: Go
@@ -347,8 +325,6 @@ Templates are added with markers to enable selective removal:
 MIT License - see [LICENSE](LICENSE) for details.
 
 ## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)
