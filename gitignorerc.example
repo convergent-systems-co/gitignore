@@ -6,11 +6,50 @@
 #
 # The second file (~/.gitignorerc) takes precedence if both exist.
 
-# Template source URL
-# Default: https://github.com/github/gitignore
+# ============================================================================
+# Template Sources
+# ============================================================================
 #
-# You can change this to use a different repository:
-# gitignore.template.url = https://github.com/mycompany/gitignore-templates
-
+# Templates are searched in this order:
+#   1. Local: gitignore.local-templates-path (always checked first)
+#   2. GitHub repository (gitignore.template.url)
+#   3. Toptal API (if enable.toptal.gitignore = true)
+#
+# GitHub repository URL for templates
+# Default: https://github.com/github/gitignore
 gitignore.template.url = https://github.com/github/gitignore
+
+# Enable Toptal gitignore API as a fallback source
+# The Toptal API (https://www.toptal.com/developers/gitignore/api) provides
+# additional templates when GitHub doesn't have what you need.
+# Set to true to enable, false to disable (default: false)
+enable.toptal.gitignore = true
+
+# ============================================================================
+# Local Templates Path
+# ============================================================================
+#
+# Directory for custom local templates
+# Default: ~/.config/gitignore/templates
+# Templates should be named <type>.gitignore (e.g., myproject.gitignore)
+gitignore.local-templates-path = ~/.config/gitignore/templates
+
+# ============================================================================
+# Default Types
+# ============================================================================
+#
+# Templates to add when running 'gitignore init'
+# Comma-separated list of template names
+
 gitignore.default-types = Go, Global/macOS, Global/VisualStudioCode
+
+# ============================================================================
+# Notes
+# ============================================================================
+#
+# Local templates ALWAYS take precedence over remote sources.
+# This is useful for:
+#   - Company-specific ignore patterns
+#   - Project-specific templates
+#   - Overriding built-in templates with custom versions
+#

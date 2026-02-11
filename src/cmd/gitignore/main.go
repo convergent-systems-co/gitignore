@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/polliard/gitignore/src/pkg/config"
-	"github.com/polliard/gitignore/src/pkg/github"
 	"github.com/polliard/gitignore/src/pkg/gitignore"
+	"github.com/polliard/gitignore/src/pkg/source"
 )
 
 const (
@@ -39,7 +39,12 @@ func run(args []string) error {
 
 	switch cmd {
 	case "--list", "-l", "list":
-		return cmdList(cfg)
+		return cmdList(cfg, "")
+	case "search", "-s":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: gitignore search <pattern>")
+		}
+		return cmdList(cfg, args[1])
 	case "add":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: gitignore add <type>")
@@ -63,76 +68,144 @@ func run(args []string) error {
 	}
 }
 
-func cmdList(cfg *config.Config) error {
-	fmt.Printf("Fetching gitignore templates from: %s\n\n", cfg.TemplateURL)
-
-	client, err := github.NewClient(cfg.TemplateURL)
+func cmdList(cfg *config.Config, searchPattern string) error {
+	// Create source manager
+	sm, err := source.NewSourceManager(cfg.LocalTemplatesPath, cfg.TemplateURL, cfg.EnableToptal)
 	if err != nil {
-		return fmt.Errorf("failed to create GitHub client: %w", err)
+		return fmt.Errorf("failed to create source manager: %w", err)
 	}
 
-	files, err := client.ListGitignoreFiles()
+	// Get all files grouped by source
+	filesBySource, err := sm.ListBySource()
 	if err != nil {
-		return fmt.Errorf("failed to list gitignore files: %w", err)
+		return fmt.Errorf("failed to list templates: %w", err)
 	}
 
-	// Group files by category
-	categories := make(map[string][]github.GitignoreFile)
-	for _, file := range files {
-		cat := file.Category
-		if cat == "" {
-			cat = "(root)"
-		}
-		categories[cat] = append(categories[cat], file)
-	}
+	// Build flat list of all template paths
+	var allPaths []string
+	var warnings []string
 
-	// Sort categories
-	var catNames []string
-	for cat := range categories {
-		catNames = append(catNames, cat)
-	}
-	sort.Strings(catNames)
-
-	// Print files grouped by category
-	totalCount := 0
-	for _, cat := range catNames {
-		files := categories[cat]
-		sort.Slice(files, func(i, j int) bool {
-			return strings.ToLower(files[i].Name) < strings.ToLower(files[j].Name)
-		})
-
-		if cat == "(root)" {
-			fmt.Println("Available templates:")
+	// Process local templates
+	if localResult, ok := filesBySource["local"]; ok {
+		if localResult.Error != nil {
+			warnings = append(warnings, fmt.Sprintf("⚠️  Local templates: %v (path: %s)", localResult.Error, sm.LocalSource().Dir()))
 		} else {
-			fmt.Printf("\n%s:\n", cat)
-		}
-
-		for _, file := range files {
-			fmt.Printf("  %s\n", file.Name)
-			totalCount++
+			for _, file := range localResult.Files {
+				allPaths = append(allPaths, fmt.Sprintf("local/%s", strings.ToLower(file.Name)))
+			}
 		}
 	}
 
-	fmt.Printf("\nTotal: %d templates available\n", totalCount)
+	// Process remote templates
+	for _, src := range sm.RemoteSources() {
+		result, ok := filesBySource[src.Name()]
+		if !ok {
+			continue
+		}
+
+		if result.Error != nil {
+			msg := fmt.Sprintf("⚠️  %s: %v", formatSourceName(src.Name()), result.Error)
+			if src.Name() == "github" {
+				if gs, ok := src.(*source.GitHubSource); ok {
+					msg += fmt.Sprintf(" (url: %s)", gs.URL())
+				}
+			}
+			warnings = append(warnings, msg)
+			continue
+		}
+
+		for _, file := range result.Files {
+			var path string
+			if file.Category == "" {
+				path = fmt.Sprintf("%s/%s", strings.ToLower(src.Name()), strings.ToLower(file.Name))
+			} else {
+				path = fmt.Sprintf("%s/%s/%s", strings.ToLower(src.Name()), strings.ToLower(file.Category), strings.ToLower(file.Name))
+			}
+			allPaths = append(allPaths, path)
+		}
+	}
+
+	// Sort all paths alphabetically
+	sort.Strings(allPaths)
+
+	// Filter by search pattern if provided
+	if searchPattern != "" {
+		searchLower := strings.ToLower(searchPattern)
+		var filtered []string
+		for _, path := range allPaths {
+			if strings.Contains(path, searchLower) {
+				filtered = append(filtered, path)
+			}
+		}
+		allPaths = filtered
+	}
+
+	// Print warnings first
+	for _, w := range warnings {
+		fmt.Fprintln(os.Stderr, w)
+	}
+	if len(warnings) > 0 {
+		fmt.Fprintln(os.Stderr)
+	}
+
+	// Print paths
+	if len(allPaths) == 0 {
+		if searchPattern != "" {
+			fmt.Printf("No templates matching '%s'\n", searchPattern)
+		} else {
+			fmt.Println("No templates available")
+		}
+		return nil
+	}
+
+	for _, path := range allPaths {
+		fmt.Println(path)
+	}
+
 	return nil
 }
 
+// formatSourceName returns a human-readable source name
+func formatSourceName(source string) string {
+	switch source {
+	case "local":
+		return "Local"
+	case "github":
+		return "GitHub"
+	case "toptal":
+		return "Toptal"
+	default:
+		return source
+	}
+}
+
 func cmdAdd(cfg *config.Config, templateType string) error {
-	client, err := github.NewClient(cfg.TemplateURL)
+	// Create source manager
+	sm, err := source.NewSourceManager(cfg.LocalTemplatesPath, cfg.TemplateURL, cfg.EnableToptal)
 	if err != nil {
-		return fmt.Errorf("failed to create GitHub client: %w", err)
+		return fmt.Errorf("failed to create source manager: %w", err)
 	}
 
-	// Find the gitignore file
-	file, err := client.FindGitignoreFile(templateType)
-	if err != nil {
-		return err
-	}
+	var file *source.TemplateFile
+	var content string
 
-	// Get the content
-	content, err := client.GetGitignoreContent(*file)
-	if err != nil {
-		return fmt.Errorf("failed to fetch template content: %w", err)
+	// Check if templateType has a source prefix (e.g., "github/Go" or "toptal/rust")
+	if strings.HasPrefix(templateType, "local/") ||
+		strings.HasPrefix(templateType, "github/") ||
+		strings.HasPrefix(templateType, "toptal/") {
+		parts := strings.SplitN(templateType, "/", 2)
+		sourceName := parts[0]
+		templateName := parts[1]
+		file, content, err = sm.GetFromSource(sourceName, templateName)
+		if err != nil {
+			return fmt.Errorf("failed to get '%s' from %s: %w", templateName, sourceName, err)
+		}
+	} else {
+		// No source prefix, use default priority order
+		file, content, err = sm.Get(templateType)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Get current working directory
@@ -153,7 +226,7 @@ func cmdAdd(cfg *config.Config, templateType string) error {
 		return err
 	}
 
-	fmt.Printf("Added '%s' to .gitignore\n", sectionName)
+	fmt.Printf("Added '%s' to .gitignore (from %s)\n", sectionName, formatSourceName(file.Source))
 	return nil
 }
 
@@ -182,9 +255,10 @@ func cmdInit(cfg *config.Config) error {
 		return nil
 	}
 
-	client, err := github.NewClient(cfg.TemplateURL)
+	// Create source manager
+	sm, err := source.NewSourceManager(cfg.LocalTemplatesPath, cfg.TemplateURL, cfg.EnableToptal)
 	if err != nil {
-		return fmt.Errorf("failed to create GitHub client: %w", err)
+		return fmt.Errorf("failed to create source manager: %w", err)
 	}
 
 	cwd, err := os.Getwd()
@@ -211,17 +285,10 @@ func cmdInit(cfg *config.Config) error {
 			continue
 		}
 
-		// Find the gitignore file
-		file, err := client.FindGitignoreFile(templateType)
+		// Get the template (checks local first, then remote sources)
+		file, content, err := sm.Get(templateType)
 		if err != nil {
 			fmt.Printf("  Warning: template '%s' not found\n", templateType)
-			continue
-		}
-
-		// Get the content
-		content, err := client.GetGitignoreContent(*file)
-		if err != nil {
-			fmt.Printf("  Warning: failed to fetch '%s': %v\n", templateType, err)
 			continue
 		}
 
@@ -237,7 +304,7 @@ func cmdInit(cfg *config.Config) error {
 			continue
 		}
 
-		fmt.Printf("  Added '%s'\n", sectionName)
+		fmt.Printf("  Added '%s' (from %s)\n", sectionName, formatSourceName(file.Source))
 		addedCount++
 	}
 
@@ -246,10 +313,11 @@ func cmdInit(cfg *config.Config) error {
 }
 
 func printUsage() {
-	usage := `gitignore - Manage .gitignore templates from GitHub
+	usage := `gitignore - Manage .gitignore templates from multiple sources
 
 Usage:
-  gitignore --list              List all available gitignore templates
+  gitignore list                List all available templates
+  gitignore search <pattern>    Search templates by name
   gitignore add <type>          Add a gitignore template to .gitignore
   gitignore delete <type>       Remove a gitignore template from .gitignore
   gitignore init                Initialize .gitignore with configured default types
@@ -257,18 +325,43 @@ Usage:
   gitignore --version           Show version information
 
 Examples:
-  gitignore --list              # List all available templates
-  gitignore add Go              # Add Go template
-  gitignore add Global/macOS    # Add macOS global template
+  gitignore list                # List all available templates
+  gitignore search rust         # Search for templates containing "rust"
+  gitignore add Go              # Add Go template (auto-selects source by priority)
+  gitignore add github/go       # Add Go template from GitHub
+  gitignore add toptal/rust     # Add Rust template from Toptal
+  gitignore add local/myproject # Add custom template from local directory
   gitignore delete Go           # Remove Go template
   gitignore init                # Add all default types from config
 
+Template Sources (in priority order):
+  1. Local: Configurable path (default: ~/.config/gitignore/templates/)
+     - Custom templates that override remote sources
+     - Create your own templates here
+  2. GitHub: Repository configured in gitignorerc
+  3. Toptal: API fallback (if enable.toptal.gitignore = true)
+
 Configuration:
   Create ~/.config/gitignore/gitignorerc or ~/.gitignorerc with:
+
+    # GitHub repository URL for templates
     gitignore.template.url = https://github.com/github/gitignore
+
+    # Enable Toptal API as fallback source
+    enable.toptal.gitignore = true
+
+    # Path to local templates directory
+    gitignore.local-templates-path = ~/.config/gitignore/templates
+
+    # Default types for 'init' command
     gitignore.default-types = Go, Global/macOS, Global/VisualStudioCode
 
   The ~/.gitignorerc file takes precedence if both exist.
+
+Local Templates:
+  Place custom templates in your local templates directory (default: ~/.config/gitignore/templates/)
+  Name files as <type>.gitignore (e.g., myproject.gitignore)
+  Local templates always take precedence over remote sources.
 
 Default source: https://github.com/github/gitignore
 `
