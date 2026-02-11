@@ -354,3 +354,79 @@ func TestAddCreatesDirectory(t *testing.T) {
 		t.Error("Add() did not create .gitignore file")
 	}
 }
+
+func TestFullWorkflowAddAndDeleteAll(t *testing.T) {
+	tmpDir := t.TempDir()
+	manager := NewManager(tmpDir)
+
+	// Sample content for each template
+	goContent := "# Go binaries\n*.exe\n*.dll\nbin/\n"
+	macOSContent := "# macOS files\n.DS_Store\n.AppleDouble\n"
+	pythonContent := "# Python\n__pycache__/\n*.py[cod]\n.venv/\n"
+
+	// Step 1: Add Go, Global/macOS, Python
+	if err := manager.Add("Go", goContent); err != nil {
+		t.Fatalf("Add(Go) error = %v", err)
+	}
+	if err := manager.Add("Global/macOS", macOSContent); err != nil {
+		t.Fatalf("Add(Global/macOS) error = %v", err)
+	}
+	if err := manager.Add("Python", pythonContent); err != nil {
+		t.Fatalf("Add(Python) error = %v", err)
+	}
+
+	// Verify all three exist
+	content, _ := manager.Read()
+	if !strings.Contains(content, "### START: Go") {
+		t.Fatal("Go section not added")
+	}
+	if !strings.Contains(content, "### START: Global/macOS") {
+		t.Fatal("Global/macOS section not added")
+	}
+	if !strings.Contains(content, "### START: Python") {
+		t.Fatal("Python section not added")
+	}
+
+	// Step 2: Delete Go
+	if err := manager.Delete("Go"); err != nil {
+		t.Fatalf("Delete(Go) error = %v", err)
+	}
+
+	// Validate Go is gone, others remain
+	content, _ = manager.Read()
+	if strings.Contains(content, "### START: Go") || strings.Contains(content, "### END: Go") {
+		t.Error("Go section still exists after delete")
+	}
+	if !strings.Contains(content, "### START: Global/macOS") {
+		t.Error("Global/macOS section was incorrectly removed")
+	}
+	if !strings.Contains(content, "### START: Python") {
+		t.Error("Python section was incorrectly removed")
+	}
+
+	// Step 3: Delete Python
+	if err := manager.Delete("Python"); err != nil {
+		t.Fatalf("Delete(Python) error = %v", err)
+	}
+
+	// Validate Python is gone, macOS remains
+	content, _ = manager.Read()
+	if strings.Contains(content, "### START: Python") || strings.Contains(content, "### END: Python") {
+		t.Error("Python section still exists after delete")
+	}
+	if !strings.Contains(content, "### START: Global/macOS") {
+		t.Error("Global/macOS section was incorrectly removed")
+	}
+
+	// Step 4: Delete Global/macOS
+	if err := manager.Delete("Global/macOS"); err != nil {
+		t.Fatalf("Delete(Global/macOS) error = %v", err)
+	}
+
+	// Validate gitignore is empty (or only whitespace)
+	content, _ = manager.Read()
+	trimmed := strings.TrimSpace(content)
+	if trimmed != "" {
+		t.Errorf("Expected empty .gitignore after deleting all sections, got:\n%s", content)
+	}
+}
