@@ -262,6 +262,9 @@ func TestGetFromSource(t *testing.T) {
 	if content != "# GitHub Rust" {
 		t.Errorf("expected github content, got: %q", content)
 	}
+	if file.Name != "Rust" {
+		t.Errorf("expected file name 'Rust' from github, got %q", file.Name)
+	}
 
 	// Unknown source should error
 	_, _, err = sm.GetFromSource("unknown", "Rust")
