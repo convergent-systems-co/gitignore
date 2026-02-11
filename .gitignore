@@ -32,6 +32,15 @@ go.work.sum
 # .idea/
 # .vscode/
 ### END: Go
-/dist/
+
+### START: ignored//build/
 /build/
+### END: ignored//build/
+
+### START: ignored//dist/
+/dist/
+### END: ignored//dist/
+
+### START: ignored//bin/
 /bin/
+### END: ignored//bin/
