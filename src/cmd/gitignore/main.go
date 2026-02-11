@@ -222,7 +222,14 @@ func cmdAdd(cfg *config.Config, templateType string) error {
 		return err
 	}
 
-	fmt.Printf("Added '%s' to .gitignore (from %s)\n", sectionName, formatSourceName(file.Source))
+	// Build display path like list/search (lowercase source/category/name)
+	var displayPath string
+	if file.Category == "" {
+		displayPath = fmt.Sprintf("%s/%s", strings.ToLower(file.Source), strings.ToLower(file.Name))
+	} else {
+		displayPath = fmt.Sprintf("%s/%s/%s", strings.ToLower(file.Source), strings.ToLower(file.Category), strings.ToLower(file.Name))
+	}
+	fmt.Printf("Added '%s' to .gitignore\n", displayPath)
 	return nil
 }
 
@@ -300,7 +307,14 @@ func cmdInit(cfg *config.Config) error {
 			continue
 		}
 
-		fmt.Printf("  Added '%s' (from %s)\n", sectionName, formatSourceName(file.Source))
+		// Build display path like list/search (lowercase source/category/name)
+		var displayPath string
+		if file.Category == "" {
+			displayPath = fmt.Sprintf("%s/%s", strings.ToLower(file.Source), strings.ToLower(file.Name))
+		} else {
+			displayPath = fmt.Sprintf("%s/%s/%s", strings.ToLower(file.Source), strings.ToLower(file.Category), strings.ToLower(file.Name))
+		}
+		fmt.Printf("  Added '%s'\n", displayPath)
 		addedCount++
 	}
 
