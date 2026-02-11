@@ -8,18 +8,19 @@ import (
 )
 
 func TestNewManager(t *testing.T) {
-	manager := NewManager("/tmp/test")
-	expected := "/tmp/test/.gitignore"
+	testDir := filepath.Join("tmp", "test")
+	manager := NewManager(testDir)
+	expected := filepath.Join(testDir, ".gitignore")
 	if manager.Path() != expected {
 		t.Errorf("Path() = %v, want %v", manager.Path(), expected)
 	}
 }
 
 func TestNewManagerWithPath(t *testing.T) {
-	manager := NewManagerWithPath("/custom/path/.gitignore")
-	expected := "/custom/path/.gitignore"
-	if manager.Path() != expected {
-		t.Errorf("Path() = %v, want %v", manager.Path(), expected)
+	customPath := filepath.Join("custom", "path", ".gitignore")
+	manager := NewManagerWithPath(customPath)
+	if manager.Path() != customPath {
+		t.Errorf("Path() = %v, want %v", manager.Path(), customPath)
 	}
 }
 
