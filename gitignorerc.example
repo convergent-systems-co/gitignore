@@ -1,0 +1,16 @@
+# gitignore CLI configuration file
+#
+# Place this file at one of these locations:
+#   ~/.config/gitignore/gitignorerc
+#   ~/.gitignorerc
+#
+# The second file (~/.gitignorerc) takes precedence if both exist.
+
+# Template source URL
+# Default: https://github.com/github/gitignore
+#
+# You can change this to use a different repository:
+# gitignore.template.url = https://github.com/mycompany/gitignore-templates
+
+gitignore.template.url = https://github.com/github/gitignore
+gitignore.default-types = Go, Global/macOS, Global/VisualStudioCode

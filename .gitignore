@@ -1,0 +1,32 @@
+# Build artifacts
+/build/
+/dist/
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Coverage
+coverage.out
+coverage.html
+
+# Temporary files
+*.tmp
+*.bak
