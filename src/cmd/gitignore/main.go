@@ -69,6 +69,11 @@ func run(args []string) error {
 			return fmt.Errorf("usage: gitignore delete <type>")
 		}
 		return cmdDelete(args[1])
+	case "ignore":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: gitignore ignore <pattern> [pattern...]")
+		}
+		return cmdIgnore(args[1:])
 	case "--help", "-h", "help":
 		printUsage()
 		return nil
@@ -322,6 +327,33 @@ func cmdInit(cfg *config.Config) error {
 	return nil
 }
 
+func cmdIgnore(patterns []string) error {
+	// Get current working directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	manager := gitignore.NewManager(cwd)
+	added, skipped, err := manager.AddPatterns(patterns)
+	if err != nil {
+		return err
+	}
+
+	for _, pattern := range added {
+		fmt.Printf("Added '%s' to .gitignore\n", pattern)
+	}
+	for _, pattern := range skipped {
+		fmt.Printf("Skipped '%s' (already exists)\n", pattern)
+	}
+
+	if len(added) == 0 && len(skipped) == 0 {
+		fmt.Println("No patterns to add")
+	}
+
+	return nil
+}
+
 func printUsage() {
 	usage := `gitignore - Manage .gitignore templates from multiple sources
 
@@ -329,6 +361,7 @@ Usage:
   gitignore list                List all available templates
   gitignore search <pattern>    Search templates by name
   gitignore add <type>          Add a gitignore template to .gitignore
+  gitignore ignore <pattern>    Add a path/pattern directly to .gitignore
   gitignore delete <type>       Remove a gitignore template from .gitignore
   gitignore init                Initialize .gitignore with configured default types
   gitignore --help              Show this help message
@@ -341,6 +374,9 @@ Examples:
   gitignore add github/go       # Add Go template from GitHub
   gitignore add toptal/rust     # Add Rust template from Toptal
   gitignore add local/myproject # Add custom template from local directory
+  gitignore ignore /dist/       # Add /dist/ pattern to .gitignore
+  gitignore ignore node_modules # Add node_modules to .gitignore
+  gitignore ignore *.log tmp/   # Add multiple patterns at once
   gitignore delete Go           # Remove Go template
   gitignore init                # Add all default types from config
 

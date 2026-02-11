@@ -7,6 +7,7 @@ A command-line tool to manage `.gitignore` files using templates from multiple s
 - List all available gitignore templates from multiple sources
 - Search templates by name
 - Add gitignore templates to your project's `.gitignore` file
+- **Add paths/patterns directly** - no template needed for simple ignores
 - Remove previously added templates
 - **Local template overrides** - create custom templates that take precedence
 - **Multiple source support** - GitHub repositories and Toptal API
@@ -126,6 +127,26 @@ gitignore delete go
 ```
 
 This removes the specified section from your `.gitignore` file.
+
+### Ignore Local Paths
+
+Add paths or patterns directly without fetching templates:
+
+```bash
+# Add a single pattern
+gitignore ignore /dist/
+
+# Add multiple patterns at once
+gitignore ignore node_modules *.log tmp/
+```
+
+Output:
+
+```
+Added '/dist/' to .gitignore
+```
+
+Patterns are added directly without section markers. Duplicate patterns are automatically skipped.
 
 ### Initialize with Default Types
 

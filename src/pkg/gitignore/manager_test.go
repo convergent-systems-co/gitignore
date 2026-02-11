@@ -431,3 +431,97 @@ func TestFullWorkflowAddAndDeleteAll(t *testing.T) {
 		t.Errorf("Expected empty .gitignore after deleting all sections, got:\n%s", content)
 	}
 }
+
+func TestAddPatterns(t *testing.T) {
+	tmpDir := t.TempDir()
+	manager := NewManager(tmpDir)
+
+	// Test adding patterns to empty file
+	added, skipped, err := manager.AddPatterns([]string{"/dist/", "node_modules", "*.log"})
+	if err != nil {
+		t.Fatalf("AddPatterns() error = %v", err)
+	}
+	if len(added) != 3 {
+		t.Errorf("AddPatterns() added = %d, want 3", len(added))
+	}
+	if len(skipped) != 0 {
+		t.Errorf("AddPatterns() skipped = %d, want 0", len(skipped))
+	}
+
+	content, err := manager.Read()
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if !strings.Contains(content, "/dist/") {
+		t.Error("AddPatterns() did not add /dist/")
+	}
+	if !strings.Contains(content, "node_modules") {
+		t.Error("AddPatterns() did not add node_modules")
+	}
+	if !strings.Contains(content, "*.log") {
+		t.Error("AddPatterns() did not add *.log")
+	}
+
+	// Test adding duplicate patterns (should be skipped)
+	added, skipped, err = manager.AddPatterns([]string{"node_modules", "tmp/"})
+	if err != nil {
+		t.Fatalf("AddPatterns() error = %v", err)
+	}
+	if len(added) != 1 {
+		t.Errorf("AddPatterns() added = %d, want 1", len(added))
+	}
+	if len(skipped) != 1 {
+		t.Errorf("AddPatterns() skipped = %d, want 1", len(skipped))
+	}
+	if skipped[0] != "node_modules" {
+		t.Errorf("AddPatterns() skipped[0] = %s, want node_modules", skipped[0])
+	}
+
+	// Test empty patterns are ignored
+	added, skipped, err = manager.AddPatterns([]string{"", "  ", "valid_pattern"})
+	if err != nil {
+		t.Fatalf("AddPatterns() error = %v", err)
+	}
+	if len(added) != 1 {
+		t.Errorf("AddPatterns() added = %d, want 1", len(added))
+	}
+	if added[0] != "valid_pattern" {
+		t.Errorf("AddPatterns() added[0] = %s, want valid_pattern", added[0])
+	}
+}
+
+func TestAddPatternsWithExistingContent(t *testing.T) {
+	tmpDir := t.TempDir()
+	manager := NewManager(tmpDir)
+
+	// Start with a template section
+	if err := manager.Add("Go", "*.exe\nbin/"); err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
+
+	// Add patterns after template
+	added, _, err := manager.AddPatterns([]string{"vendor/", ".env"})
+	if err != nil {
+		t.Fatalf("AddPatterns() error = %v", err)
+	}
+	if len(added) != 2 {
+		t.Errorf("AddPatterns() added = %d, want 2", len(added))
+	}
+
+	content, err := manager.Read()
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+
+	// Template content should still exist
+	if !strings.Contains(content, "### START: Go") {
+		t.Error("Template section was lost")
+	}
+	// New patterns should be added
+	if !strings.Contains(content, "vendor/") {
+		t.Error("AddPatterns() did not add vendor/")
+	}
+	if !strings.Contains(content, ".env") {
+		t.Error("AddPatterns() did not add .env")
+	}
+}

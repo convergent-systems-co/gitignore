@@ -193,3 +193,61 @@ func (m *Manager) write(content string) error {
 func (m *Manager) Path() string {
 	return m.filepath
 }
+
+// AddPatterns appends one or more patterns directly to the gitignore file
+// without section markers. Patterns that already exist are skipped.
+func (m *Manager) AddPatterns(patterns []string) (added []string, skipped []string, err error) {
+	currentContent, err := m.Read()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Build a set of existing patterns for quick lookup
+	existingPatterns := make(map[string]bool)
+	scanner := bufio.NewScanner(strings.NewReader(currentContent))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" && !strings.HasPrefix(line, "#") {
+			existingPatterns[line] = true
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, nil, fmt.Errorf("error reading .gitignore: %w", err)
+	}
+
+	// Filter out patterns that already exist
+	var newPatterns []string
+	for _, pattern := range patterns {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == "" {
+			continue
+		}
+		if existingPatterns[pattern] {
+			skipped = append(skipped, pattern)
+		} else {
+			newPatterns = append(newPatterns, pattern)
+			added = append(added, pattern)
+		}
+	}
+
+	if len(newPatterns) == 0 {
+		return added, skipped, nil
+	}
+
+	// Build new content
+	var builder strings.Builder
+	if currentContent != "" {
+		builder.WriteString(currentContent)
+		if !strings.HasSuffix(currentContent, "\n") {
+			builder.WriteString("\n")
+		}
+	}
+
+	for _, pattern := range newPatterns {
+		builder.WriteString(pattern)
+		builder.WriteString("\n")
+	}
+
+	err = m.write(builder.String())
+	return added, skipped, err
+}

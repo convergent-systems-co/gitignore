@@ -78,12 +78,25 @@ gitignore search rust
 gitignore list
 ```
 
+## Step 5: Ignore Local Paths
+
+Add paths or patterns directly without using templates:
+
+```bash
+# Add a single pattern
+gitignore ignore /dist/
+
+# Add multiple patterns at once
+gitignore ignore node_modules *.log tmp/
+```
+
 ## Quick Reference
 
 | Command                      | Description                                |
 | ---------------------------- | ------------------------------------------ |
 | `gitignore init`             | Initialize with default templates          |
 | `gitignore add <type>`       | Add a template (e.g., `go`, `github/rust`) |
+| `gitignore ignore <pattern>` | Add a path/pattern directly to .gitignore  |
 | `gitignore delete <type>`    | Remove a previously added template         |
 | `gitignore search <pattern>` | Search templates by name                   |
 | `gitignore list`             | List all available templates               |
