@@ -90,14 +90,23 @@ gitignore ignore /dist/
 gitignore ignore node_modules *.log tmp/
 ```
 
+Patterns are tracked with section markers, so you can remove them later:
+
+```bash
+# Remove patterns added via ignore
+gitignore remove /dist/
+gitignore remove node_modules
+```
+
 ## Quick Reference
 
 | Command                      | Description                                |
 | ---------------------------- | ------------------------------------------ |
 | `gitignore init`             | Initialize with default templates          |
 | `gitignore add <type>`       | Add a template (e.g., `go`, `github/rust`) |
-| `gitignore ignore <pattern>` | Add a path/pattern directly to .gitignore  |
 | `gitignore delete <type>`    | Remove a previously added template         |
+| `gitignore ignore <pattern>` | Add a path/pattern directly to .gitignore  |
+| `gitignore remove <pattern>` | Remove a path/pattern added via ignore     |
 | `gitignore search <pattern>` | Search templates by name                   |
 | `gitignore list`             | List all available templates               |
 

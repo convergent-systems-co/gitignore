@@ -146,7 +146,19 @@ Output:
 Added '/dist/' to .gitignore
 ```
 
-Patterns are added directly without section markers. Duplicate patterns are automatically skipped.
+Patterns are wrapped in section markers (like templates) so they can be tracked and removed. Duplicate patterns are automatically skipped.
+
+### Remove Ignored Patterns
+
+Remove patterns that were added via `ignore`:
+
+```bash
+# Remove a single pattern
+gitignore remove /dist/
+
+# Remove multiple patterns
+gitignore remove node_modules *.log
+```
 
 ### Initialize with Default Types
 

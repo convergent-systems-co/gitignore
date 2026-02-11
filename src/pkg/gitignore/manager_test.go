@@ -452,11 +452,18 @@ func TestAddPatterns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Read() error = %v", err)
 	}
+	// Check patterns and section markers
 	if !strings.Contains(content, "/dist/") {
 		t.Error("AddPatterns() did not add /dist/")
 	}
+	if !strings.Contains(content, "### START: ignored//dist/") {
+		t.Error("AddPatterns() did not add section marker for /dist/")
+	}
 	if !strings.Contains(content, "node_modules") {
 		t.Error("AddPatterns() did not add node_modules")
+	}
+	if !strings.Contains(content, "### START: ignored/node_modules") {
+		t.Error("AddPatterns() did not add section marker for node_modules")
 	}
 	if !strings.Contains(content, "*.log") {
 		t.Error("AddPatterns() did not add *.log")
@@ -517,11 +524,76 @@ func TestAddPatternsWithExistingContent(t *testing.T) {
 	if !strings.Contains(content, "### START: Go") {
 		t.Error("Template section was lost")
 	}
-	// New patterns should be added
+	// New patterns should be added with section markers
 	if !strings.Contains(content, "vendor/") {
 		t.Error("AddPatterns() did not add vendor/")
 	}
+	if !strings.Contains(content, "### START: ignored/vendor/") {
+		t.Error("AddPatterns() did not add section marker for vendor/")
+	}
 	if !strings.Contains(content, ".env") {
 		t.Error("AddPatterns() did not add .env")
+	}
+}
+
+func TestRemovePattern(t *testing.T) {
+	tmpDir := t.TempDir()
+	manager := NewManager(tmpDir)
+
+	// Add some patterns first
+	_, _, err := manager.AddPatterns([]string{"node_modules", "/dist/", "*.log"})
+	if err != nil {
+		t.Fatalf("AddPatterns() error = %v", err)
+	}
+
+	// Verify they exist
+	content, _ := manager.Read()
+	if !strings.Contains(content, "node_modules") {
+		t.Fatal("Pattern not added")
+	}
+
+	// Remove one pattern
+	err = manager.RemovePattern("node_modules")
+	if err != nil {
+		t.Fatalf("RemovePattern() error = %v", err)
+	}
+
+	// Verify it's gone
+	content, _ = manager.Read()
+	if strings.Contains(content, "### START: ignored/node_modules") {
+		t.Error("RemovePattern() did not remove section marker")
+	}
+	if strings.Contains(content, "### END: ignored/node_modules") {
+		t.Error("RemovePattern() did not remove end marker")
+	}
+
+	// Other patterns should still exist
+	if !strings.Contains(content, "/dist/") {
+		t.Error("RemovePattern() incorrectly removed /dist/")
+	}
+	if !strings.Contains(content, "*.log") {
+		t.Error("RemovePattern() incorrectly removed *.log")
+	}
+
+	// Remove non-existent pattern should error
+	err = manager.RemovePattern("nonexistent")
+	if err == nil {
+		t.Error("RemovePattern() should error for non-existent pattern")
+	}
+
+	// Remove remaining patterns
+	err = manager.RemovePattern("/dist/")
+	if err != nil {
+		t.Fatalf("RemovePattern() error = %v", err)
+	}
+	err = manager.RemovePattern("*.log")
+	if err != nil {
+		t.Fatalf("RemovePattern() error = %v", err)
+	}
+
+	// File should be empty
+	content, _ = manager.Read()
+	if strings.TrimSpace(content) != "" {
+		t.Errorf("Expected empty file, got:\n%s", content)
 	}
 }

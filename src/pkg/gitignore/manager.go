@@ -194,60 +194,45 @@ func (m *Manager) Path() string {
 	return m.filepath
 }
 
-// AddPatterns appends one or more patterns directly to the gitignore file
-// without section markers. Patterns that already exist are skipped.
+// IgnoredSectionPrefix is the prefix used for patterns added via ignore command
+const IgnoredSectionPrefix = "ignored/"
+
+// AddPatterns adds one or more patterns to the gitignore file, each wrapped in section markers.
+// Patterns that already have a section are skipped.
 func (m *Manager) AddPatterns(patterns []string) (added []string, skipped []string, err error) {
-	currentContent, err := m.Read()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Build a set of existing patterns for quick lookup
-	existingPatterns := make(map[string]bool)
-	scanner := bufio.NewScanner(strings.NewReader(currentContent))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line != "" && !strings.HasPrefix(line, "#") {
-			existingPatterns[line] = true
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return nil, nil, fmt.Errorf("error reading .gitignore: %w", err)
-	}
-
-	// Filter out patterns that already exist
-	var newPatterns []string
 	for _, pattern := range patterns {
 		pattern = strings.TrimSpace(pattern)
 		if pattern == "" {
 			continue
 		}
-		if existingPatterns[pattern] {
+
+		sectionName := IgnoredSectionPrefix + pattern
+		exists, err := m.HasSection(sectionName)
+		if err != nil {
+			return added, skipped, err
+		}
+		if exists {
 			skipped = append(skipped, pattern)
-		} else {
-			newPatterns = append(newPatterns, pattern)
-			added = append(added, pattern)
+			continue
 		}
-	}
 
-	if len(newPatterns) == 0 {
-		return added, skipped, nil
-	}
-
-	// Build new content
-	var builder strings.Builder
-	if currentContent != "" {
-		builder.WriteString(currentContent)
-		if !strings.HasSuffix(currentContent, "\n") {
-			builder.WriteString("\n")
+		// Add the pattern as a section
+		if err := m.Add(sectionName, pattern); err != nil {
+			return added, skipped, err
 		}
+		added = append(added, pattern)
 	}
 
-	for _, pattern := range newPatterns {
-		builder.WriteString(pattern)
-		builder.WriteString("\n")
+	return added, skipped, nil
+}
+
+// RemovePattern removes a pattern that was added via AddPatterns (ignore command)
+func (m *Manager) RemovePattern(pattern string) error {
+	pattern = strings.TrimSpace(pattern)
+	if pattern == "" {
+		return fmt.Errorf("pattern cannot be empty")
 	}
 
-	err = m.write(builder.String())
-	return added, skipped, err
+	sectionName := IgnoredSectionPrefix + pattern
+	return m.Delete(sectionName)
 }

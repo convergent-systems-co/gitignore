@@ -64,7 +64,7 @@ func run(args []string) error {
 		return cmdAdd(cfg, args[1])
 	case "init":
 		return cmdInit(cfg)
-	case "delete", "remove", "rm":
+	case "delete", "rm":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: gitignore delete <type>")
 		}
@@ -74,6 +74,11 @@ func run(args []string) error {
 			return fmt.Errorf("usage: gitignore ignore <pattern> [pattern...]")
 		}
 		return cmdIgnore(args[1:])
+	case "remove":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: gitignore remove <pattern> [pattern...]")
+		}
+		return cmdRemove(args[1:])
 	case "--help", "-h", "help":
 		printUsage()
 		return nil
@@ -354,6 +359,26 @@ func cmdIgnore(patterns []string) error {
 	return nil
 }
 
+func cmdRemove(patterns []string) error {
+	// Get current working directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	manager := gitignore.NewManager(cwd)
+
+	for _, pattern := range patterns {
+		if err := manager.RemovePattern(pattern); err != nil {
+			fmt.Printf("Warning: %v\n", err)
+			continue
+		}
+		fmt.Printf("Removed '%s' from .gitignore\n", pattern)
+	}
+
+	return nil
+}
+
 func printUsage() {
 	usage := `gitignore - Manage .gitignore templates from multiple sources
 
@@ -361,8 +386,9 @@ Usage:
   gitignore list                List all available templates
   gitignore search <pattern>    Search templates by name
   gitignore add <type>          Add a gitignore template to .gitignore
-  gitignore ignore <pattern>    Add a path/pattern directly to .gitignore
   gitignore delete <type>       Remove a gitignore template from .gitignore
+  gitignore ignore <pattern>    Add a path/pattern directly to .gitignore
+  gitignore remove <pattern>    Remove a path/pattern added via ignore
   gitignore init                Initialize .gitignore with configured default types
   gitignore --help              Show this help message
   gitignore --version           Show version information
@@ -374,10 +400,12 @@ Examples:
   gitignore add github/go       # Add Go template from GitHub
   gitignore add toptal/rust     # Add Rust template from Toptal
   gitignore add local/myproject # Add custom template from local directory
+  gitignore delete Go           # Remove Go template
   gitignore ignore /dist/       # Add /dist/ pattern to .gitignore
   gitignore ignore node_modules # Add node_modules to .gitignore
   gitignore ignore *.log tmp/   # Add multiple patterns at once
-  gitignore delete Go           # Remove Go template
+  gitignore remove /dist/       # Remove /dist/ pattern from .gitignore
+  gitignore remove node_modules # Remove node_modules from .gitignore
   gitignore init                # Add all default types from config
 
 Template Sources (in priority order):
