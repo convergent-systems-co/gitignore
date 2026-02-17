@@ -1,12 +1,17 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"fmt"
+	"io"
 	"os"
 	"runtime/debug"
 	"sort"
 	"strings"
 
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 	"github.com/polliard/gitignore/src/pkg/config"
 	"github.com/polliard/gitignore/src/pkg/gitignore"
 	"github.com/polliard/gitignore/src/pkg/source"
@@ -79,6 +84,8 @@ func run(args []string) error {
 			return fmt.Errorf("usage: gitignore remove <pattern> [pattern...]")
 		}
 		return cmdRemove(args[1:])
+	case "serve":
+		return cmdServe()
 	case "--help", "-h", "help":
 		printUsage()
 		return nil
@@ -91,6 +98,10 @@ func run(args []string) error {
 }
 
 func cmdList(cfg *config.Config, searchPattern string) error {
+	return cmdListTo(os.Stdout, cfg, searchPattern)
+}
+
+func cmdListTo(w io.Writer, cfg *config.Config, searchPattern string) error {
 	// Create source manager
 	sm, err := source.NewSourceManager(cfg.LocalTemplatesPath, cfg.TemplateURL, cfg.EnableToptal)
 	if err != nil {
@@ -162,9 +173,9 @@ func cmdList(cfg *config.Config, searchPattern string) error {
 		allPaths = filtered
 	}
 
-	// Print warnings first
-	for _, w := range warnings {
-		fmt.Fprintln(os.Stderr, w)
+	// Print warnings first (always to stderr)
+	for _, warn := range warnings {
+		fmt.Fprintln(os.Stderr, warn)
 	}
 	if len(warnings) > 0 {
 		fmt.Fprintln(os.Stderr)
@@ -173,15 +184,15 @@ func cmdList(cfg *config.Config, searchPattern string) error {
 	// Print paths
 	if len(allPaths) == 0 {
 		if searchPattern != "" {
-			fmt.Printf("No templates matching '%s'\n", searchPattern)
+			fmt.Fprintf(w, "No templates matching '%s'\n", searchPattern)
 		} else {
-			fmt.Println("No templates available")
+			fmt.Fprintln(w, "No templates available")
 		}
 		return nil
 	}
 
 	for _, path := range allPaths {
-		fmt.Println(path)
+		fmt.Fprintln(w, path)
 	}
 
 	return nil
@@ -202,6 +213,10 @@ func formatSourceName(source string) string {
 }
 
 func cmdAdd(cfg *config.Config, templateType string) error {
+	return cmdAddTo(os.Stdout, cfg, templateType)
+}
+
+func cmdAddTo(w io.Writer, cfg *config.Config, templateType string) error {
 	// Create source manager
 	sm, err := source.NewSourceManager(cfg.LocalTemplatesPath, cfg.TemplateURL, cfg.EnableToptal)
 	if err != nil {
@@ -239,11 +254,15 @@ func cmdAdd(cfg *config.Config, templateType string) error {
 	} else {
 		displayPath = fmt.Sprintf("%s/%s/%s", strings.ToLower(file.Source), strings.ToLower(file.Category), strings.ToLower(file.Name))
 	}
-	fmt.Printf("Added '%s' to .gitignore\n", displayPath)
+	fmt.Fprintf(w, "Added '%s' to .gitignore\n", displayPath)
 	return nil
 }
 
 func cmdDelete(templateType string) error {
+	return cmdDeleteTo(os.Stdout, templateType)
+}
+
+func cmdDeleteTo(w io.Writer, templateType string) error {
 	// Get current working directory
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -257,14 +276,18 @@ func cmdDelete(templateType string) error {
 		return err
 	}
 
-	fmt.Printf("Removed '%s' from .gitignore\n", templateType)
+	fmt.Fprintf(w, "Removed '%s' from .gitignore\n", templateType)
 	return nil
 }
 
 func cmdInit(cfg *config.Config) error {
+	return cmdInitTo(os.Stdout, cfg)
+}
+
+func cmdInitTo(w io.Writer, cfg *config.Config) error {
 	if len(cfg.DefaultTypes) == 0 {
-		fmt.Println("No default types configured.")
-		fmt.Println("Add 'gitignore.default-types = github/go, github/global/macos' to your config file.")
+		fmt.Fprintln(w, "No default types configured.")
+		fmt.Fprintln(w, "Add 'gitignore.default-types = github/go, github/global/macos' to your config file.")
 		return nil
 	}
 
@@ -283,17 +306,17 @@ func cmdInit(cfg *config.Config) error {
 	addedCount := 0
 	skippedCount := 0
 
-	fmt.Printf("Initializing .gitignore with default types: %s\n\n", strings.Join(cfg.DefaultTypes, ", "))
+	fmt.Fprintf(w, "Initializing .gitignore with default types: %s\n\n", strings.Join(cfg.DefaultTypes, ", "))
 
 	for _, templateType := range cfg.DefaultTypes {
 		// Check if already exists
 		exists, err := manager.HasSection(templateType)
 		if err != nil {
-			fmt.Printf("  Warning: could not check for '%s': %v\n", templateType, err)
+			fmt.Fprintf(w, "  Warning: could not check for '%s': %v\n", templateType, err)
 			continue
 		}
 		if exists {
-			fmt.Printf("  Skipping '%s' (already exists)\n", templateType)
+			fmt.Fprintf(w, "  Skipping '%s' (already exists)\n", templateType)
 			skippedCount++
 			continue
 		}
@@ -301,7 +324,7 @@ func cmdInit(cfg *config.Config) error {
 		// GetAny handles source prefixes automatically (e.g., "github/rust" vs "rust")
 		file, content, err := sm.GetAny(templateType)
 		if err != nil {
-			fmt.Printf("  Warning: template '%s' not found\n", templateType)
+			fmt.Fprintf(w, "  Warning: template '%s' not found\n", templateType)
 			continue
 		}
 
@@ -313,7 +336,7 @@ func cmdInit(cfg *config.Config) error {
 
 		// Add to gitignore
 		if err := manager.Add(sectionName, content); err != nil {
-			fmt.Printf("  Warning: failed to add '%s': %v\n", templateType, err)
+			fmt.Fprintf(w, "  Warning: failed to add '%s': %v\n", templateType, err)
 			continue
 		}
 
@@ -324,15 +347,19 @@ func cmdInit(cfg *config.Config) error {
 		} else {
 			displayPath = fmt.Sprintf("%s/%s/%s", strings.ToLower(file.Source), strings.ToLower(file.Category), strings.ToLower(file.Name))
 		}
-		fmt.Printf("  Added '%s'\n", displayPath)
+		fmt.Fprintf(w, "  Added '%s'\n", displayPath)
 		addedCount++
 	}
 
-	fmt.Printf("\nDone: %d added, %d skipped\n", addedCount, skippedCount)
+	fmt.Fprintf(w, "\nDone: %d added, %d skipped\n", addedCount, skippedCount)
 	return nil
 }
 
 func cmdIgnore(patterns []string) error {
+	return cmdIgnoreTo(os.Stdout, patterns)
+}
+
+func cmdIgnoreTo(w io.Writer, patterns []string) error {
 	// Get current working directory
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -346,20 +373,24 @@ func cmdIgnore(patterns []string) error {
 	}
 
 	for _, pattern := range added {
-		fmt.Printf("Added '%s' to .gitignore\n", pattern)
+		fmt.Fprintf(w, "Added '%s' to .gitignore\n", pattern)
 	}
 	for _, pattern := range skipped {
-		fmt.Printf("Skipped '%s' (already exists)\n", pattern)
+		fmt.Fprintf(w, "Skipped '%s' (already exists)\n", pattern)
 	}
 
 	if len(added) == 0 && len(skipped) == 0 {
-		fmt.Println("No patterns to add")
+		fmt.Fprintln(w, "No patterns to add")
 	}
 
 	return nil
 }
 
 func cmdRemove(patterns []string) error {
+	return cmdRemoveTo(os.Stdout, patterns)
+}
+
+func cmdRemoveTo(w io.Writer, patterns []string) error {
 	// Get current working directory
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -370,13 +401,176 @@ func cmdRemove(patterns []string) error {
 
 	for _, pattern := range patterns {
 		if err := manager.RemovePattern(pattern); err != nil {
-			fmt.Printf("Warning: %v\n", err)
+			fmt.Fprintf(w, "Warning: %v\n", err)
 			continue
 		}
-		fmt.Printf("Removed '%s' from .gitignore\n", pattern)
+		fmt.Fprintf(w, "Removed '%s' from .gitignore\n", pattern)
 	}
 
 	return nil
+}
+
+// cmdServe starts an MCP server that exposes gitignore tools
+func cmdServe() error {
+	// Load configuration once for reuse across tool calls
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Create MCP server
+	s := server.NewMCPServer(
+		"gitignore",
+		getVersion(),
+		server.WithToolCapabilities(true),
+	)
+
+	// Register gitignore_list tool
+	listTool := mcp.NewTool("gitignore_list",
+		mcp.WithDescription("List all available gitignore templates from configured sources (local, GitHub, Toptal)"),
+	)
+	s.AddTool(listTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var buf bytes.Buffer
+		if err := cmdListTo(&buf, cfg, ""); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(buf.String()), nil
+	})
+
+	// Register gitignore_search tool
+	searchTool := mcp.NewTool("gitignore_search",
+		mcp.WithDescription("Search for gitignore templates by name pattern"),
+		mcp.WithString("pattern",
+			mcp.Required(),
+			mcp.Description("Search pattern to filter templates (case-insensitive substring match)"),
+		),
+	)
+	s.AddTool(searchTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		pattern, err := request.RequireString("pattern")
+		if err != nil {
+			return mcp.NewToolResultError("pattern parameter is required"), nil
+		}
+		var buf bytes.Buffer
+		if err := cmdListTo(&buf, cfg, pattern); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(buf.String()), nil
+	})
+
+	// Register gitignore_add tool
+	addTool := mcp.NewTool("gitignore_add",
+		mcp.WithDescription("Add a gitignore template to .gitignore file in the current directory"),
+		mcp.WithString("type",
+			mcp.Required(),
+			mcp.Description("Template type to add (e.g., 'go', 'github/rust', 'toptal/python')"),
+		),
+	)
+	s.AddTool(addTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		templateType, err := request.RequireString("type")
+		if err != nil {
+			return mcp.NewToolResultError("type parameter is required"), nil
+		}
+		var buf bytes.Buffer
+		if err := cmdAddTo(&buf, cfg, templateType); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(buf.String()), nil
+	})
+
+	// Register gitignore_delete tool
+	deleteTool := mcp.NewTool("gitignore_delete",
+		mcp.WithDescription("Remove a gitignore template section from .gitignore file"),
+		mcp.WithString("type",
+			mcp.Required(),
+			mcp.Description("Template type/section name to remove from .gitignore"),
+		),
+	)
+	s.AddTool(deleteTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		templateType, err := request.RequireString("type")
+		if err != nil {
+			return mcp.NewToolResultError("type parameter is required"), nil
+		}
+		var buf bytes.Buffer
+		if err := cmdDeleteTo(&buf, templateType); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(buf.String()), nil
+	})
+
+	// Register gitignore_ignore tool
+	ignoreTool := mcp.NewTool("gitignore_ignore",
+		mcp.WithDescription("Add one or more patterns directly to .gitignore file"),
+		mcp.WithArray("patterns",
+			mcp.Required(),
+			mcp.Description("Array of patterns to add to .gitignore (e.g., ['node_modules', '*.log', 'dist/'])"),
+		),
+	)
+	s.AddTool(ignoreTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := request.GetArguments()
+		patternsRaw, ok := args["patterns"].([]interface{})
+		if !ok || len(patternsRaw) == 0 {
+			return mcp.NewToolResultError("patterns parameter is required and must be a non-empty array"), nil
+		}
+		patterns := make([]string, 0, len(patternsRaw))
+		for _, p := range patternsRaw {
+			if ps, ok := p.(string); ok {
+				patterns = append(patterns, ps)
+			}
+		}
+		if len(patterns) == 0 {
+			return mcp.NewToolResultError("patterns must contain at least one string"), nil
+		}
+		var buf bytes.Buffer
+		if err := cmdIgnoreTo(&buf, patterns); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(buf.String()), nil
+	})
+
+	// Register gitignore_remove tool
+	removeTool := mcp.NewTool("gitignore_remove",
+		mcp.WithDescription("Remove one or more patterns from .gitignore file"),
+		mcp.WithArray("patterns",
+			mcp.Required(),
+			mcp.Description("Array of patterns to remove from .gitignore"),
+		),
+	)
+	s.AddTool(removeTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := request.GetArguments()
+		patternsRaw, ok := args["patterns"].([]interface{})
+		if !ok || len(patternsRaw) == 0 {
+			return mcp.NewToolResultError("patterns parameter is required and must be a non-empty array"), nil
+		}
+		patterns := make([]string, 0, len(patternsRaw))
+		for _, p := range patternsRaw {
+			if ps, ok := p.(string); ok {
+				patterns = append(patterns, ps)
+			}
+		}
+		if len(patterns) == 0 {
+			return mcp.NewToolResultError("patterns must contain at least one string"), nil
+		}
+		var buf bytes.Buffer
+		if err := cmdRemoveTo(&buf, patterns); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(buf.String()), nil
+	})
+
+	// Register gitignore_init tool
+	initTool := mcp.NewTool("gitignore_init",
+		mcp.WithDescription("Initialize .gitignore with configured default template types"),
+	)
+	s.AddTool(initTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		var buf bytes.Buffer
+		if err := cmdInitTo(&buf, cfg); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(buf.String()), nil
+	})
+
+	// Run the server using stdio transport
+	return server.ServeStdio(s)
 }
 
 func printUsage() {
@@ -390,6 +584,7 @@ Usage:
   gitignore ignore <pattern>    Add a path/pattern directly to .gitignore
   gitignore remove <pattern>    Remove a path/pattern added via ignore
   gitignore init                Initialize .gitignore with configured default types
+  gitignore serve               Start MCP server for AI assistant integration
   gitignore --help              Show this help message
   gitignore --version           Show version information
 
@@ -407,6 +602,7 @@ Examples:
   gitignore remove /dist/       # Remove /dist/ pattern from .gitignore
   gitignore remove node_modules # Remove node_modules from .gitignore
   gitignore init                # Add all default types from config
+  gitignore serve               # Start MCP server (for AI assistants)
 
 Template Sources (in priority order):
   1. Local: Configurable path (default: ~/.config/gitignore/templates/)

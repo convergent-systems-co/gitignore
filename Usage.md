@@ -109,6 +109,17 @@ gitignore remove node_modules
 | `gitignore remove <pattern>` | Remove a path/pattern added via ignore     |
 | `gitignore search <pattern>` | Search templates by name                   |
 | `gitignore list`             | List all available templates               |
+| `gitignore serve`            | Start MCP server for AI integration        |
+
+## AI Integration
+
+The CLI can run as an MCP (Model Context Protocol) server for integration with AI assistants:
+
+```bash
+gitignore serve
+```
+
+This enables tools like GitHub Copilot and Claude to manage your `.gitignore` files directly. See the [README](README.md#ai-integration-mcp-server) for configuration details.
 
 ## Custom Templates
 

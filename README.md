@@ -11,6 +11,7 @@ A command-line tool to manage `.gitignore` files using templates from multiple s
 - Remove previously added templates
 - **Local template overrides** - create custom templates that take precedence
 - **Multiple source support** - GitHub repositories and Toptal API
+- **MCP server mode** - native integration with AI assistants like GitHub Copilot and Claude
 - Configurable template sources with priority ordering
 - Cross-platform support (macOS Intel/Silicon, Windows, Linux)
 
@@ -303,6 +304,46 @@ The [Toptal gitignore.io API](https://www.toptal.com/developers/gitignore/api) p
 ```ini
 enable.toptal.gitignore = true
 ```
+
+## AI Integration (MCP Server)
+
+The `gitignore serve` command starts an MCP (Model Context Protocol) server, enabling AI assistants like GitHub Copilot and Claude to call gitignore tools directly.
+
+### Starting the Server
+
+```bash
+gitignore serve
+```
+
+The server listens on stdin/stdout using JSON-RPC, exposing all CLI functionality as MCP tools.
+
+### VS Code Integration
+
+Add to your VS Code MCP configuration (`.vscode/mcp.json` or settings):
+
+```json
+{
+  "servers": {
+    "gitignore": {
+      "type": "stdio",
+      "command": "gitignore",
+      "args": ["serve"]
+    }
+  }
+}
+```
+
+### Available MCP Tools
+
+| Tool               | Description                         | Parameters           |
+| ------------------ | ----------------------------------- | -------------------- |
+| `gitignore_list`   | List all available templates        | none                 |
+| `gitignore_search` | Search templates by pattern         | `pattern: string`    |
+| `gitignore_add`    | Add a template to .gitignore        | `type: string`       |
+| `gitignore_delete` | Remove a template section           | `type: string`       |
+| `gitignore_ignore` | Add patterns directly to .gitignore | `patterns: string[]` |
+| `gitignore_remove` | Remove patterns from .gitignore     | `patterns: string[]` |
+| `gitignore_init`   | Initialize with configured defaults | none                 |
 
 ## Development
 
