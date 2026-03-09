@@ -129,3 +129,20 @@ jobs:
             artifacts/**/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify-homebrew-tap:
+    name: Notify Homebrew Tap
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Dispatch update to homebrew-tap
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          repository: convergent-systems-co/homebrew-tap
+          event-type: gitignore-release
+          client-payload: '{"version": "${{ steps.get_version.outputs.VERSION }}"}'
