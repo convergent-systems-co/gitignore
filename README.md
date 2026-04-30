@@ -2,6 +2,11 @@
 
 A command-line tool to manage `.gitignore` files using templates from multiple sources.
 
+If this saves you time, a coffee keeps it maintained.
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/convergentsystems)
+
+---
+
 ## Features
 
 - List all available gitignore templates from multiple sources
