@@ -485,7 +485,7 @@ func TestAddPatterns(t *testing.T) {
 	}
 
 	// Test empty patterns are ignored
-	added, skipped, err = manager.AddPatterns([]string{"", "  ", "valid_pattern"})
+	added, _, err = manager.AddPatterns([]string{"", "  ", "valid_pattern"})
 	if err != nil {
 		t.Fatalf("AddPatterns() error = %v", err)
 	}

@@ -146,3 +146,20 @@ jobs:
           repository: convergent-systems-co/homebrew-tap
           event-type: gitignore-release
           client-payload: '{"version": "${{ steps.get_version.outputs.VERSION }}"}'
+
+  notify-winget-pkgs:
+    name: Notify WinGet Pkgs
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Dispatch update to winget-pkgs
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.WINGET_PKGS_TOKEN }}
+          repository: convergent-systems-co/winget-pkgs
+          event-type: gitignore-release
+          client-payload: '{"version": "${{ steps.get_version.outputs.VERSION }}", "package_identifier": "ConvergentSystems.Gitignore"}'
