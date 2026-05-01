@@ -3,8 +3,8 @@
 A free, open-source CLI for managing `.gitignore` files.
 
 ```bash
-brew install convergent-systems-co/tap/gitignore   # macOS / Linux
-winget install ConvergentSystems.Gitignore         # Windows
+brew install convergent-systems-co/tap/gitignore                                 # macOS / Linux
+scoop bucket add convergent-systems https://github.com/convergent-systems-co/scoop-bucket; scoop install gitignore   # Windows
 ```
 
 - **Website**: <https://gitignore.convergent-systems.co>

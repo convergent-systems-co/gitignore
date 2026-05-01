@@ -35,16 +35,17 @@ To upgrade later:
 brew update && brew upgrade gitignore
 ```
 
-### Windows (WinGet)
+### Windows (Scoop)
 
 ```powershell
-winget install ConvergentSystems.Gitignore
+scoop bucket add convergent-systems https://github.com/convergent-systems-co/scoop-bucket
+scoop install gitignore
 ```
 
 To upgrade later:
 
 ```powershell
-winget upgrade ConvergentSystems.Gitignore
+scoop update gitignore
 ```
 
 ### Linux (manual install)
@@ -78,7 +79,7 @@ curl -L https://github.com/convergent-systems-co/gitignore/releases/latest/downl
 sudo mv gitignore /usr/local/bin/
 ```
 
-### Windows (manual install, no WinGet)
+### Windows (manual install, no Scoop)
 
 Download the `.zip` file from the [Releases](https://github.com/convergent-systems-co/gitignore/releases) page, extract `gitignore.exe`, and place it in a directory on your `PATH` (for example `%LOCALAPPDATA%\Programs\gitignore\`).
 
