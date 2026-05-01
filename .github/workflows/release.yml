@@ -147,8 +147,8 @@ jobs:
           event-type: gitignore-release
           client-payload: '{"version": "${{ steps.get_version.outputs.VERSION }}"}'
 
-  notify-winget-pkgs:
-    name: Notify WinGet Pkgs
+  notify-scoop-bucket:
+    name: Notify Scoop Bucket
     needs: release
     runs-on: ubuntu-latest
     steps:
@@ -156,10 +156,10 @@ jobs:
         id: get_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
 
-      - name: Dispatch update to winget-pkgs
+      - name: Dispatch update to scoop-bucket
         uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.PACKAGE_PUBLISH_TOKEN }}
-          repository: convergent-systems-co/winget-pkgs
+          repository: convergent-systems-co/scoop-bucket
           event-type: gitignore-release
-          client-payload: '{"version": "${{ steps.get_version.outputs.VERSION }}", "package_identifier": "ConvergentSystems.Gitignore"}'
+          client-payload: '{"version": "${{ steps.get_version.outputs.VERSION }}"}'
