@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Gitignore — A free CLI for managing .gitignore files</title>
+  <meta name="description" content="A free, open-source command-line tool for managing .gitignore files. Templates from GitHub and Toptal, local overrides, MCP server mode for AI coding assistants. macOS, Linux, Windows.">
+  <link rel="icon" type="image/svg+xml" href="https://convergent-systems.co/assets/favicon.svg">
+
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Gitignore — A free CLI for managing .gitignore files">
+  <meta property="og:description" content="Templates from multiple sources, local overrides, and an MCP server mode for AI coding assistants.">
+  <meta property="og:url" content="https://gitignore.convergent-systems.co">
+
+  <link rel="preconnect" href="https://rsms.me/">
+  <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+
+  <style>
+    :root {
+      --bg:           #07090f;
+      --bg-2:         #0b1020;
+      --fg:           #eef1f7;
+      --muted:        #a4adbf;
+      --muted-soft:   #7d8699;
+      --cyan:         #5cd6ff;
+      --cyan-soft:    #8de4ff;
+      --gold:         #f4c75e;
+      --orange:       #ff8a3d;
+      --hairline:     rgba(255,255,255,0.08);
+      --hairline-2:   rgba(255,255,255,0.14);
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      margin: 0;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+    body::before {
+      content: "";
+      position: fixed; inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(900px 600px at 78% 22%, rgba(92, 214, 255, 0.06), transparent 70%),
+        radial-gradient(800px 500px at 18% 18%, rgba(244, 199, 94, 0.05), transparent 70%);
+      z-index: 0;
+    }
+
+    a { color: var(--cyan); text-decoration: none; }
+    a:hover { color: var(--cyan-soft); }
+
+    .container {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 4.5rem 1.75rem 3rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Hero */
+    .hero { margin-bottom: 4rem; }
+    .eyebrow {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--cyan);
+      margin: 0 0 1rem;
+    }
+    h1 {
+      font-size: clamp(2.4rem, 5.5vw, 3.6rem);
+      font-weight: 800;
+      letter-spacing: -0.035em;
+      line-height: 1.04;
+      margin: 0 0 1rem;
+    }
+    .lede {
+      font-size: 1.15rem;
+      color: var(--fg);
+      font-weight: 500;
+      line-height: 1.55;
+      margin: 0 0 1.25rem;
+      max-width: 50ch;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 1.02rem;
+      line-height: 1.65;
+      max-width: 60ch;
+      margin: 0 0 2rem;
+    }
+    .cta-row { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 0.55rem;
+      min-height: 44px;
+      padding: 0.7rem 1.25rem;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 0.94rem;
+      text-decoration: none;
+      letter-spacing: -0.005em;
+      transition: transform 0.15s ease, background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+      border: 1px solid transparent;
+    }
+    .btn-primary {
+      background: linear-gradient(95deg, var(--gold) 0%, var(--orange) 100%);
+      color: #1a0e02;
+      box-shadow: 0 10px 30px -10px rgba(255, 138, 61, 0.4);
+    }
+    .btn-primary:hover { transform: translateY(-1px); }
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--fg);
+      border-color: var(--hairline-2);
+    }
+    .btn-secondary:hover { border-color: var(--cyan); color: var(--cyan); }
+
+    /* Sections */
+    section { margin-bottom: 4rem; }
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin: 0 0 1.25rem;
+    }
+    h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin: 1.5rem 0 0.5rem;
+      color: var(--fg);
+    }
+    p { color: var(--muted); line-height: 1.65; max-width: 60ch; margin: 0 0 1rem; }
+
+    /* Code blocks */
+    pre, code {
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 0.92rem;
+    }
+    pre {
+      background: var(--bg-2);
+      border: 1px solid var(--hairline);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      overflow-x: auto;
+      line-height: 1.55;
+      color: var(--fg);
+      margin: 0.5rem 0 1rem;
+    }
+    p code, li code {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--hairline);
+      border-radius: 4px;
+      padding: 0.1rem 0.4rem;
+      color: var(--cyan-soft);
+      font-size: 0.88em;
+    }
+
+    /* Feature list */
+    ul.features {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1rem;
+    }
+    ul.features li {
+      padding: 1.1rem 1.25rem;
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid var(--hairline);
+      border-radius: 12px;
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.55;
+    }
+    ul.features li strong {
+      display: block;
+      color: var(--gold);
+      font-weight: 600;
+      letter-spacing: -0.005em;
+      margin-bottom: 0.35rem;
+    }
+
+    /* Tabs (CSS-only) */
+    .tabs { margin: 1rem 0; }
+    .tabs input { display: none; }
+    .tabs .tab-row { display: flex; gap: 0.5rem; border-bottom: 1px solid var(--hairline); margin-bottom: 1rem; flex-wrap: wrap; }
+    .tabs label {
+      padding: 0.55rem 1rem;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--muted);
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.15s ease, border-color 0.15s ease;
+    }
+    .tabs label:hover { color: var(--fg); }
+    .tabs .tab-content { display: none; }
+    .tabs #t1:checked ~ .tab-row label[for="t1"],
+    .tabs #t2:checked ~ .tab-row label[for="t2"],
+    .tabs #t3:checked ~ .tab-row label[for="t3"],
+    .tabs #t4:checked ~ .tab-row label[for="t4"] { color: var(--cyan); border-bottom-color: var(--cyan); }
+    .tabs #t1:checked ~ .tab-content[data-tab="1"],
+    .tabs #t2:checked ~ .tab-content[data-tab="2"],
+    .tabs #t3:checked ~ .tab-content[data-tab="3"],
+    .tabs #t4:checked ~ .tab-content[data-tab="4"] { display: block; }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--hairline);
+      padding: 2rem 1.75rem;
+      text-align: center;
+      color: var(--muted-soft);
+      font-size: 0.88rem;
+      max-width: 880px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+    }
+    footer a { color: var(--muted); }
+    footer a:hover { color: var(--gold); }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <header class="hero">
+    <p class="eyebrow">Free · Open Source</p>
+    <h1>Gitignore</h1>
+    <p class="lede">A free command-line tool for managing <code>.gitignore</code> files.</p>
+    <p class="sub">Templates from GitHub and Toptal, local overrides for project-specific patterns, and an MCP server mode that lets AI coding assistants manage ignore rules directly. Cross-platform binaries for macOS, Linux, and Windows.</p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://github.com/convergent-systems-co/gitignore/releases/latest">
+        Download latest release
+        <span aria-hidden="true">&rarr;</span>
+      </a>
+      <a class="btn btn-secondary" href="https://github.com/convergent-systems-co/gitignore">
+        Source on GitHub
+        <span aria-hidden="true">&rarr;</span>
+      </a>
+    </div>
+  </header>
+
+  <section id="install">
+    <h2>Installation</h2>
+    <div class="tabs">
+      <input type="radio" name="tab" id="t1" checked>
+      <input type="radio" name="tab" id="t2">
+      <input type="radio" name="tab" id="t3">
+      <input type="radio" name="tab" id="t4">
+      <div class="tab-row">
+        <label for="t1">macOS (Apple Silicon)</label>
+        <label for="t2">macOS (Intel)</label>
+        <label for="t3">Linux</label>
+        <label for="t4">Windows</label>
+      </div>
+      <div class="tab-content" data-tab="1">
+<pre><code>curl -L https://github.com/convergent-systems-co/gitignore/releases/latest/download/gitignore-darwin-arm64.tar.gz | tar xz
+sudo mv gitignore /usr/local/bin/</code></pre>
+      </div>
+      <div class="tab-content" data-tab="2">
+<pre><code>curl -L https://github.com/convergent-systems-co/gitignore/releases/latest/download/gitignore-darwin-amd64.tar.gz | tar xz
+sudo mv gitignore /usr/local/bin/</code></pre>
+      </div>
+      <div class="tab-content" data-tab="3">
+<pre><code>curl -L https://github.com/convergent-systems-co/gitignore/releases/latest/download/gitignore-linux-amd64.tar.gz | tar xz
+sudo mv gitignore /usr/local/bin/</code></pre>
+      </div>
+      <div class="tab-content" data-tab="4">
+<pre><code>Download the .zip from the releases page and extract gitignore.exe to a directory in your PATH.</code></pre>
+      </div>
+    </div>
+    <p>Or install from source with Go:</p>
+<pre><code>go install github.com/convergent-systems-co/gitignore/src/cmd/gitignore@latest</code></pre>
+  </section>
+
+  <section id="usage">
+    <h2>Quick start</h2>
+
+    <h3>List available templates</h3>
+<pre><code>gitignore list</code></pre>
+    <p>Shows templates in <code>source/name</code> form: <code>github/go</code>, <code>github/global/macos</code>, <code>toptal/rust</code>, <code>local/myproject</code>.</p>
+
+    <h3>Search for a stack</h3>
+<pre><code>gitignore search rust</code></pre>
+
+    <h3>Add templates to your project's .gitignore</h3>
+<pre><code>gitignore add github/go github/global/macos</code></pre>
+
+    <h3>Remove a previously-added template</h3>
+<pre><code>gitignore remove github/go</code></pre>
+
+    <h3>Add a single path or pattern (no template)</h3>
+<pre><code>gitignore add-path "*.log" "build/"</code></pre>
+  </section>
+
+  <section id="features">
+    <h2>What's in the box</h2>
+    <ul class="features">
+      <li><strong>Templates from multiple sources</strong>github.com/github/gitignore and Toptal's gitignore.io API. Configurable priority order.</li>
+      <li><strong>Local overrides</strong>Custom templates in <code>~/.config/gitignore/local/</code> take precedence over upstream sources.</li>
+      <li><strong>Add patterns directly</strong>For one-off ignores you don't want to template.</li>
+      <li><strong>Idempotent add and remove</strong>Templates are tracked by markers; remove cleanly removes only the lines a previous add wrote.</li>
+      <li><strong>MCP server mode</strong>Native integration with AI coding assistants (Claude, GitHub Copilot). The assistant manages your <code>.gitignore</code> directly via the Model Context Protocol.</li>
+      <li><strong>Cross-platform</strong>Native binaries for macOS (Intel + Apple Silicon), Linux, and Windows. Single static binary, no runtime.</li>
+    </ul>
+  </section>
+
+  <section id="mcp">
+    <h2>MCP server mode</h2>
+    <p>Run the tool as an MCP server so AI coding assistants can manage your <code>.gitignore</code> automatically:</p>
+<pre><code>gitignore mcp serve</code></pre>
+    <p>Configure your MCP-aware client (Claude Desktop, GitHub Copilot, etc.) to launch this command. The assistant gains tools for listing, searching, adding, and removing templates without round-tripping through your terminal.</p>
+  </section>
+
+  <section id="docs">
+    <h2>Full documentation</h2>
+    <p>Complete usage guide, configuration reference, and contribution guidelines live in the repository:</p>
+    <p>
+      <a href="https://github.com/convergent-systems-co/gitignore">github.com/convergent-systems-co/gitignore</a>
+    </p>
+  </section>
+
+</div>
+<footer>
+  A tool from <a href="https://convergent-systems.co">Convergent Systems</a>.
+  &copy; 2026.
+</footer>
+</body>
+</html>
