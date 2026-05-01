@@ -258,29 +258,41 @@
       <input type="radio" name="tab" id="t3">
       <input type="radio" name="tab" id="t4">
       <div class="tab-row">
-        <label for="t1">macOS (Apple Silicon)</label>
-        <label for="t2">macOS (Intel)</label>
-        <label for="t3">Linux</label>
-        <label for="t4">Windows</label>
+        <label for="t1">Homebrew (macOS / Linux)</label>
+        <label for="t2">Scoop (Windows)</label>
+        <label for="t3">Direct download</label>
+        <label for="t4">From source</label>
       </div>
       <div class="tab-content" data-tab="1">
-<pre><code>curl -L https://github.com/convergent-systems-co/gitignore/releases/latest/download/gitignore-darwin-arm64.tar.gz | tar xz
-sudo mv gitignore /usr/local/bin/</code></pre>
+<pre><code>brew install convergent-systems-co/tap/gitignore</code></pre>
+        <p>Upgrade with <code>brew upgrade gitignore</code>.</p>
       </div>
       <div class="tab-content" data-tab="2">
-<pre><code>curl -L https://github.com/convergent-systems-co/gitignore/releases/latest/download/gitignore-darwin-amd64.tar.gz | tar xz
-sudo mv gitignore /usr/local/bin/</code></pre>
+<pre><code>scoop bucket add convergent-systems https://github.com/convergent-systems-co/scoop-bucket
+scoop install gitignore</code></pre>
+        <p>Upgrade with <code>scoop update gitignore</code>.</p>
       </div>
       <div class="tab-content" data-tab="3">
-<pre><code>curl -L https://github.com/convergent-systems-co/gitignore/releases/latest/download/gitignore-linux-amd64.tar.gz | tar xz
-sudo mv gitignore /usr/local/bin/</code></pre>
+<pre><code># macOS (Apple Silicon)
+curl -L https://github.com/convergent-systems-co/gitignore/releases/latest/download/gitignore-darwin-arm64.tar.gz | tar xz
+sudo mv gitignore /usr/local/bin/
+
+# macOS (Intel)
+curl -L https://github.com/convergent-systems-co/gitignore/releases/latest/download/gitignore-darwin-amd64.tar.gz | tar xz
+sudo mv gitignore /usr/local/bin/
+
+# Linux
+curl -L https://github.com/convergent-systems-co/gitignore/releases/latest/download/gitignore-linux-amd64.tar.gz | tar xz
+sudo mv gitignore /usr/local/bin/
+
+# Windows
+# Download gitignore-*-windows-amd64.zip from the releases page and add gitignore.exe to your PATH.</code></pre>
       </div>
       <div class="tab-content" data-tab="4">
-<pre><code>Download the .zip from the releases page and extract gitignore.exe to a directory in your PATH.</code></pre>
+<pre><code>go install github.com/convergent-systems-co/gitignore/src/cmd/gitignore@latest</code></pre>
+        <p>Requires Go 1.23+. The binary lands in <code>$GOPATH/bin</code> (typically <code>$HOME/go/bin</code>).</p>
       </div>
     </div>
-    <p>Or install from source with Go:</p>
-<pre><code>go install github.com/convergent-systems-co/gitignore/src/cmd/gitignore@latest</code></pre>
   </section>
 
   <section id="usage">
