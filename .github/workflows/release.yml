@@ -142,7 +142,7 @@ jobs:
       - name: Dispatch update to homebrew-tap
         uses: peter-evans/repository-dispatch@v3
         with:
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          token: ${{ secrets.PACKAGE_PUBLISH_TOKEN }}
           repository: convergent-systems-co/homebrew-tap
           event-type: gitignore-release
           client-payload: '{"version": "${{ steps.get_version.outputs.VERSION }}"}'
@@ -159,7 +159,7 @@ jobs:
       - name: Dispatch update to winget-pkgs
         uses: peter-evans/repository-dispatch@v3
         with:
-          token: ${{ secrets.WINGET_PKGS_TOKEN }}
+          token: ${{ secrets.PACKAGE_PUBLISH_TOKEN }}
           repository: convergent-systems-co/winget-pkgs
           event-type: gitignore-release
           client-payload: '{"version": "${{ steps.get_version.outputs.VERSION }}", "package_identifier": "ConvergentSystems.Gitignore"}'
