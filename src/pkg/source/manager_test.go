@@ -48,6 +48,8 @@ func (m *mockSource) Find(query string) (*TemplateFile, error) {
 	return nil, errors.New("not found")
 }
 
+func (m *mockSource) Describe() string { return "mock:" + m.name }
+
 func TestListBySource_GracefulDegradation(t *testing.T) {
 	// This test ensures that when one source fails, we still get results from others
 	// This was a bug where ListBySource would return an error if any source failed,
@@ -57,7 +59,6 @@ func TestListBySource_GracefulDegradation(t *testing.T) {
 		name           string
 		sources        []Source
 		wantNumSources int
-		wantErr        bool
 	}{
 		{
 			name: "all sources work",
@@ -72,7 +73,6 @@ func TestListBySource_GracefulDegradation(t *testing.T) {
 				},
 			},
 			wantNumSources: 2,
-			wantErr:        false,
 		},
 		{
 			name: "one source fails - should continue with others",
@@ -87,7 +87,6 @@ func TestListBySource_GracefulDegradation(t *testing.T) {
 				},
 			},
 			wantNumSources: 1, // Only the working source should have results
-			wantErr:        false,
 		},
 		{
 			name: "first source fails - should still get second source",
@@ -102,7 +101,6 @@ func TestListBySource_GracefulDegradation(t *testing.T) {
 				},
 			},
 			wantNumSources: 1,
-			wantErr:        false,
 		},
 		{
 			name: "all sources fail - should return empty, not error",
@@ -117,35 +115,18 @@ func TestListBySource_GracefulDegradation(t *testing.T) {
 				},
 			},
 			wantNumSources: 0,
-			wantErr:        false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Create a manager with our mock sources
-			sm := &SourceManager{
-				sources: tt.sources,
-			}
+			sm := &SourceManager{sources: tt.sources}
 
-			result, err := sm.ListBySource()
+			results := sm.ListBySource()
 
-			if tt.wantErr {
-				if err == nil {
-					t.Error("expected error but got none")
-				}
-				return
-			}
-
-			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
-			}
-
-			// Count sources that returned files (without errors)
 			numSourcesWithResults := 0
-			for _, sr := range result {
-				if sr.Error == nil && len(sr.Files) > 0 {
+			for _, r := range results {
+				if r.Error == nil && len(r.Files) > 0 {
 					numSourcesWithResults++
 				}
 			}
@@ -155,6 +136,16 @@ func TestListBySource_GracefulDegradation(t *testing.T) {
 			}
 		})
 	}
+}
+
+// findResult locates a source's entry in a ListBySource slice by name.
+func findResult(rs []SourceListResult, name string) (SourceListResult, bool) {
+	for _, r := range rs {
+		if r.Name == name {
+			return r, true
+		}
+	}
+	return SourceListResult{}, false
 }
 
 func TestListBySource_IncludesFailedSourcesWithError(t *testing.T) {
@@ -172,21 +163,15 @@ func TestListBySource_IncludesFailedSourcesWithError(t *testing.T) {
 	}
 
 	sm := &SourceManager{sources: sources}
-	result, err := sm.ListBySource()
+	results := sm.ListBySource()
 
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// github should be in the result with an error
-	if githubResult, ok := result["github"]; !ok {
+	if githubResult, ok := findResult(results, "github"); !ok {
 		t.Error("expected github source in result")
 	} else if githubResult.Error == nil {
 		t.Error("expected github source to have an error")
 	}
 
-	// local should have 1 file without error
-	if localResult, ok := result["local"]; !ok {
+	if localResult, ok := findResult(results, "local"); !ok {
 		t.Error("expected local source in result")
 	} else if localResult.Error != nil {
 		t.Errorf("unexpected error for local: %v", localResult.Error)
@@ -198,8 +183,7 @@ func TestListBySource_IncludesFailedSourcesWithError(t *testing.T) {
 func TestGet_FallbackOnError(t *testing.T) {
 	// Test that Get falls back to next source when one fails
 	sm := &SourceManager{
-		local: &LocalSource{},
-		remote: []Source{
+		sources: []Source{
 			&mockSource{
 				name:   "github",
 				getErr: errors.New("network error"),
