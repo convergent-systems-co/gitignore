@@ -6,70 +6,56 @@ import (
 	"strings"
 )
 
-// SourceManager manages multiple template sources with priority ordering
+// SourceManager manages multiple template sources with priority ordering.
+// The first source in the priority list wins for List/Get fallback.
 type SourceManager struct {
-	local   *LocalSource
-	remote  []Source
-	sources []Source // all sources in order (local first, then remote)
+	sources []Source
 }
 
-// NewSourceManager creates a new source manager
-// Priority order: local -> GitHub -> Toptal (if enabled)
+// NewSourceManager creates a manager with the standard source set:
+// local first, then GitHub, then Toptal (if enabled). The factories come
+// from the package-level registry, so additional sources registered via
+// RegisterSource will be eligible if their names are added to this list.
 func NewSourceManager(localPath, templateURL string, enableToptal bool) (*SourceManager, error) {
-	local := NewLocalSourceWithDir(localPath)
-
-	sm := &SourceManager{
-		local:  local,
-		remote: []Source{},
-	}
-
-	// Local source is always first
-	sm.sources = append(sm.sources, local)
-
-	// Add GitHub source
-	githubSource, err := NewGitHubSource(templateURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create GitHub source: %w", err)
-	}
-	sm.remote = append(sm.remote, githubSource)
-	sm.sources = append(sm.sources, githubSource)
-
-	// Add Toptal source if enabled
+	names := []string{NameLocal, NameGitHub}
 	if enableToptal {
-		toptalSource := NewToptalSource()
-		sm.remote = append(sm.remote, toptalSource)
-		sm.sources = append(sm.sources, toptalSource)
+		names = append(names, NameToptal)
 	}
+	return newSourceManagerFromNames(names, localPath, templateURL)
+}
 
+func newSourceManagerFromNames(names []string, localPath, templateURL string) (*SourceManager, error) {
+	sm := &SourceManager{sources: make([]Source, 0, len(names))}
+	for _, name := range names {
+		s, err := buildSource(name, localPath, templateURL)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create %s source: %w", name, err)
+		}
+		sm.sources = append(sm.sources, s)
+	}
 	return sm, nil
 }
 
-// List returns all templates from all sources, local templates first
+// List returns all templates from all sources, in priority order.
+// Templates already provided by an earlier source are deduplicated by
+// case-insensitive name from later sources.
 func (sm *SourceManager) List() ([]TemplateFile, error) {
 	var allFiles []TemplateFile
-	localNames := make(map[string]bool)
+	seen := make(map[string]bool)
 
-	// First, get local templates
-	localFiles, err := sm.local.List()
-	if err != nil {
-		return nil, fmt.Errorf("failed to list local templates: %w", err)
-	}
-	for _, f := range localFiles {
-		allFiles = append(allFiles, f)
-		localNames[strings.ToLower(f.Name)] = true
-	}
-
-	// Then get remote templates (mark duplicates)
-	for _, source := range sm.remote {
-		files, err := source.List()
+	for i, s := range sm.sources {
+		files, err := s.List()
 		if err != nil {
-			// Log warning but continue with other sources
+			if i == 0 {
+				return nil, fmt.Errorf("failed to list templates from %s: %w", s.Name(), err)
+			}
 			continue
 		}
 		for _, f := range files {
-			// Don't add if already exists locally (local takes precedence)
-			if !localNames[strings.ToLower(f.Name)] {
+			key := strings.ToLower(f.Name)
+			if !seen[key] {
 				allFiles = append(allFiles, f)
+				seen[key] = true
 			}
 		}
 	}
@@ -77,77 +63,69 @@ func (sm *SourceManager) List() ([]TemplateFile, error) {
 	return allFiles, nil
 }
 
-// SourceResult contains the list result for a source
-type SourceResult struct {
-	Files []TemplateFile
-	Error error
+// SourceListResult is one source's contribution to ListBySource.
+type SourceListResult struct {
+	Name        string
+	Description string // human-readable context (path or URL) for diagnostics
+	Files       []TemplateFile
+	Error       error
 }
 
-// ListBySource returns templates grouped by source
-// Sources that fail to list are included with an empty slice (graceful degradation)
-func (sm *SourceManager) ListBySource() (map[string]SourceResult, error) {
-	result := make(map[string]SourceResult)
-
-	for _, source := range sm.sources {
-		files, err := source.List()
+// ListBySource returns per-source results in priority order. Sources that
+// failed are included with their error so callers can surface diagnostics
+// without losing the rest of the data.
+func (sm *SourceManager) ListBySource() []SourceListResult {
+	results := make([]SourceListResult, 0, len(sm.sources))
+	for _, s := range sm.sources {
+		r := SourceListResult{Name: s.Name(), Description: s.Describe()}
+		files, err := s.List()
 		if err != nil {
-			// Include the source with error to indicate what went wrong
-			result[source.Name()] = SourceResult{Files: []TemplateFile{}, Error: err}
-			continue
+			r.Error = err
+		} else {
+			r.Files = files
 		}
-		result[source.Name()] = SourceResult{Files: files, Error: nil}
+		results = append(results, r)
 	}
-
-	return result, nil
+	return results
 }
 
-// Get retrieves a template by name, checking local first then remote sources
+// Get retrieves a template by name, walking sources in priority order.
 func (sm *SourceManager) Get(name string) (*TemplateFile, string, error) {
-	// Always try local first
-	file, content, err := sm.local.Get(name)
-	if err == nil {
-		return file, content, nil
-	}
-
-	// Try remote sources in order
 	var lastErr error
-	for _, source := range sm.remote {
-		file, content, err := source.Get(name)
+	for _, s := range sm.sources {
+		file, content, err := s.Get(name)
 		if err == nil {
 			return file, content, nil
 		}
 		lastErr = err
 	}
-
 	if lastErr != nil {
 		return nil, "", fmt.Errorf("template '%s' not found in any source", name)
 	}
-
 	return nil, "", fmt.Errorf("template '%s' not found", name)
 }
 
-// GetFromSource retrieves a template from a specific source
-// sourceName should be "local", "github", or "toptal"
+// GetFromSource retrieves a template from a specific source.
 func (sm *SourceManager) GetFromSource(sourceName, templateName string) (*TemplateFile, string, error) {
-	for _, source := range sm.sources {
-		if source.Name() == sourceName {
-			return source.Get(templateName)
+	for _, s := range sm.sources {
+		if s.Name() == sourceName {
+			return s.Get(templateName)
 		}
 	}
 	return nil, "", fmt.Errorf("unknown source: %s", sourceName)
 }
 
-// SourceNames returns the names of all configured sources
+// SourceNames returns the names of all configured sources in priority order.
 func (sm *SourceManager) SourceNames() []string {
 	names := make([]string, len(sm.sources))
-	for i, source := range sm.sources {
-		names[i] = source.Name()
+	for i, s := range sm.sources {
+		names[i] = s.Name()
 	}
 	return names
 }
 
-// ParseSourcePrefix checks if the template type starts with a known source name
-// Returns (sourceName, templateName, hasPrefix)
+// ParseSourcePrefix checks if the template type starts with a known source name.
+// Returns (sourceName, templateName, hasPrefix).
 // e.g., "github/global/macos" -> ("github", "global/macos", true)
 // e.g., "go" -> ("", "go", false)
 func (sm *SourceManager) ParseSourcePrefix(templateType string) (string, string, bool) {
@@ -156,17 +134,17 @@ func (sm *SourceManager) ParseSourcePrefix(templateType string) (string, string,
 		return "", templateType, false
 	}
 	potentialSource := parts[0]
-	for _, source := range sm.sources {
-		if source.Name() == potentialSource {
+	for _, s := range sm.sources {
+		if s.Name() == potentialSource {
 			return potentialSource, parts[1], true
 		}
 	}
 	return "", templateType, false
 }
 
-// GetAny retrieves a template, handling source prefixes automatically
-// If templateType has a source prefix (e.g., "github/rust"), fetches from that source
-// Otherwise, uses priority order (local -> GitHub -> Toptal)
+// GetAny retrieves a template, handling source prefixes automatically.
+// If templateType has a source prefix (e.g., "github/rust"), fetches from
+// that source. Otherwise uses priority order.
 func (sm *SourceManager) GetAny(templateType string) (*TemplateFile, string, error) {
 	sourceName, templateName, hasPrefix := sm.ParseSourcePrefix(templateType)
 	if hasPrefix {
@@ -175,36 +153,13 @@ func (sm *SourceManager) GetAny(templateType string) (*TemplateFile, string, err
 	return sm.Get(templateType)
 }
 
-// Find finds a template by name, checking local first
+// Find finds a template by name, walking sources in priority order.
 func (sm *SourceManager) Find(name string) (*TemplateFile, error) {
-	// Always try local first
-	file, err := sm.local.Find(name)
-	if err == nil {
-		return file, nil
-	}
-
-	// Try remote sources in order
-	for _, source := range sm.remote {
-		file, err := source.Find(name)
+	for _, s := range sm.sources {
+		file, err := s.Find(name)
 		if err == nil {
 			return file, nil
 		}
 	}
-
 	return nil, fmt.Errorf("template '%s' not found in any source", name)
-}
-
-// LocalSource returns the local source
-func (sm *SourceManager) LocalSource() *LocalSource {
-	return sm.local
-}
-
-// RemoteSources returns the remote sources
-func (sm *SourceManager) RemoteSources() []Source {
-	return sm.remote
-}
-
-// AllSources returns all sources in priority order
-func (sm *SourceManager) AllSources() []Source {
-	return sm.sources
 }

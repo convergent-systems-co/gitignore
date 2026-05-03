@@ -26,7 +26,12 @@ func NewGitHubSource(repoURL string) (*GitHubSource, error) {
 
 // Name returns the source name
 func (g *GitHubSource) Name() string {
-	return "github"
+	return NameGitHub
+}
+
+// Describe returns the configured GitHub repository URL.
+func (g *GitHubSource) Describe() string {
+	return g.url
 }
 
 // URL returns the GitHub repository URL
@@ -47,7 +52,7 @@ func (g *GitHubSource) List() ([]TemplateFile, error) {
 			Name:     f.Name,
 			Path:     f.Path,
 			Category: f.Category,
-			Source:   "github",
+			Source:   NameGitHub,
 		})
 	}
 
@@ -70,7 +75,7 @@ func (g *GitHubSource) Get(name string) (*TemplateFile, string, error) {
 		Name:     file.Name,
 		Path:     file.Path,
 		Category: file.Category,
-		Source:   "github",
+		Source:   NameGitHub,
 	}, content, nil
 }
 
@@ -85,6 +90,6 @@ func (g *GitHubSource) Find(name string) (*TemplateFile, error) {
 		Name:     file.Name,
 		Path:     file.Path,
 		Category: file.Category,
-		Source:   "github",
+		Source:   NameGitHub,
 	}, nil
 }

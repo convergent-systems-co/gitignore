@@ -26,6 +26,26 @@ type Source interface {
 	Get(name string) (*TemplateFile, string, error)
 	// Find finds a template by name (case-insensitive)
 	Find(name string) (*TemplateFile, error)
+	// Describe returns a human-readable description of the source for
+	// diagnostic output (typically a path or URL).
+	Describe() string
+}
+
+// findByList is the canonical "list and linear-scan" implementation of Find.
+// Sources that don't have a smarter lookup primitive should delegate to it
+// from their Find() method.
+func findByList(s Source, name string) (*TemplateFile, error) {
+	files, err := s.List()
+	if err != nil {
+		return nil, err
+	}
+	nameLower := strings.ToLower(name)
+	for _, f := range files {
+		if strings.ToLower(f.Name) == nameLower {
+			return &f, nil
+		}
+	}
+	return nil, fmt.Errorf("%s template '%s' not found", s.Name(), name)
 }
 
 // LocalSource handles templates from ~/.config/gitignore/
@@ -51,7 +71,12 @@ func NewLocalSourceWithDir(dir string) *LocalSource {
 
 // Name returns the source name
 func (l *LocalSource) Name() string {
-	return "local"
+	return NameLocal
+}
+
+// Describe returns the local templates directory path.
+func (l *LocalSource) Describe() string {
+	return l.dir
 }
 
 // Dir returns the local templates directory path
@@ -86,7 +111,7 @@ func (l *LocalSource) List() ([]TemplateFile, error) {
 			Name:     templateName,
 			Path:     filepath.Join(l.dir, name),
 			Category: "",
-			Source:   "local",
+			Source:   NameLocal,
 		})
 	}
 
@@ -110,19 +135,7 @@ func (l *LocalSource) Get(name string) (*TemplateFile, string, error) {
 
 // Find finds a template by name (case-insensitive)
 func (l *LocalSource) Find(name string) (*TemplateFile, error) {
-	files, err := l.List()
-	if err != nil {
-		return nil, err
-	}
-
-	nameLower := strings.ToLower(name)
-	for _, file := range files {
-		if strings.ToLower(file.Name) == nameLower {
-			return &file, nil
-		}
-	}
-
-	return nil, fmt.Errorf("local template '%s' not found", name)
+	return findByList(l, name)
 }
 
 // Exists checks if the local templates directory exists
