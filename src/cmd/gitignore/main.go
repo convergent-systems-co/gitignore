@@ -412,167 +412,120 @@ func cmdRemoveTo(w io.Writer, patterns []string) error {
 
 // cmdServe starts an MCP server that exposes gitignore tools
 func cmdServe() error {
-	// Load configuration once for reuse across tool calls
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Create MCP server
 	s := server.NewMCPServer(
 		"gitignore",
 		getVersion(),
 		server.WithToolCapabilities(true),
 	)
 
-	// Register gitignore_list tool
-	listTool := mcp.NewTool("gitignore_list",
-		mcp.WithDescription("List all available gitignore templates from configured sources (local, GitHub, Toptal)"),
-	)
-	s.AddTool(listTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		var buf bytes.Buffer
-		if err := cmdListTo(&buf, cfg, ""); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+	handlers := mcpToolHandlers(cfg)
+	for _, def := range mcpToolDefs() {
+		h, ok := handlers[def.Name]
+		if !ok {
+			return fmt.Errorf("missing handler for MCP tool %q", def.Name)
 		}
-		return mcp.NewToolResultText(buf.String()), nil
-	})
+		s.AddTool(def, h)
+	}
 
-	// Register gitignore_search tool
-	searchTool := mcp.NewTool("gitignore_search",
-		mcp.WithDescription("Search for gitignore templates by name pattern"),
-		mcp.WithString("pattern",
-			mcp.Required(),
-			mcp.Description("Search pattern to filter templates (case-insensitive substring match)"),
-		),
-	)
-	s.AddTool(searchTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		pattern, err := request.RequireString("pattern")
-		if err != nil {
-			return mcp.NewToolResultError("pattern parameter is required"), nil
-		}
-		var buf bytes.Buffer
-		if err := cmdListTo(&buf, cfg, pattern); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return mcp.NewToolResultText(buf.String()), nil
-	})
-
-	// Register gitignore_add tool
-	addTool := mcp.NewTool("gitignore_add",
-		mcp.WithDescription("Add a gitignore template to .gitignore file in the current directory"),
-		mcp.WithString("type",
-			mcp.Required(),
-			mcp.Description("Template type to add (e.g., 'go', 'github/rust', 'toptal/python')"),
-		),
-	)
-	s.AddTool(addTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		templateType, err := request.RequireString("type")
-		if err != nil {
-			return mcp.NewToolResultError("type parameter is required"), nil
-		}
-		var buf bytes.Buffer
-		if err := cmdAddTo(&buf, cfg, templateType); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return mcp.NewToolResultText(buf.String()), nil
-	})
-
-	// Register gitignore_delete tool
-	deleteTool := mcp.NewTool("gitignore_delete",
-		mcp.WithDescription("Remove a gitignore template section from .gitignore file"),
-		mcp.WithString("type",
-			mcp.Required(),
-			mcp.Description("Template type/section name to remove from .gitignore"),
-		),
-	)
-	s.AddTool(deleteTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		templateType, err := request.RequireString("type")
-		if err != nil {
-			return mcp.NewToolResultError("type parameter is required"), nil
-		}
-		var buf bytes.Buffer
-		if err := cmdDeleteTo(&buf, templateType); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return mcp.NewToolResultText(buf.String()), nil
-	})
-
-	// Register gitignore_ignore tool
-	ignoreTool := mcp.NewTool("gitignore_ignore",
-		mcp.WithDescription("Add one or more patterns directly to .gitignore file"),
-		mcp.WithArray("patterns",
-			mcp.WithStringItems(),
-			mcp.Required(),
-			mcp.Description("Array of patterns to add to .gitignore (e.g., ['node_modules', '*.log', 'dist/'])"),
-		),
-	)
-	s.AddTool(ignoreTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		args := request.GetArguments()
-		patternsRaw, ok := args["patterns"].([]interface{})
-		if !ok || len(patternsRaw) == 0 {
-			return mcp.NewToolResultError("patterns parameter is required and must be a non-empty array"), nil
-		}
-		patterns := make([]string, 0, len(patternsRaw))
-		for _, p := range patternsRaw {
-			if ps, ok := p.(string); ok {
-				patterns = append(patterns, ps)
-			}
-		}
-		if len(patterns) == 0 {
-			return mcp.NewToolResultError("patterns must contain at least one string"), nil
-		}
-		var buf bytes.Buffer
-		if err := cmdIgnoreTo(&buf, patterns); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return mcp.NewToolResultText(buf.String()), nil
-	})
-
-	// Register gitignore_remove tool
-	removeTool := mcp.NewTool("gitignore_remove",
-		mcp.WithDescription("Remove one or more patterns from .gitignore file"),
-		mcp.WithArray("patterns",
-			mcp.WithStringItems(),
-			mcp.Required(),
-			mcp.Description("Array of patterns to remove from .gitignore"),
-		),
-	)
-	s.AddTool(removeTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		args := request.GetArguments()
-		patternsRaw, ok := args["patterns"].([]interface{})
-		if !ok || len(patternsRaw) == 0 {
-			return mcp.NewToolResultError("patterns parameter is required and must be a non-empty array"), nil
-		}
-		patterns := make([]string, 0, len(patternsRaw))
-		for _, p := range patternsRaw {
-			if ps, ok := p.(string); ok {
-				patterns = append(patterns, ps)
-			}
-		}
-		if len(patterns) == 0 {
-			return mcp.NewToolResultError("patterns must contain at least one string"), nil
-		}
-		var buf bytes.Buffer
-		if err := cmdRemoveTo(&buf, patterns); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return mcp.NewToolResultText(buf.String()), nil
-	})
-
-	// Register gitignore_init tool
-	initTool := mcp.NewTool("gitignore_init",
-		mcp.WithDescription("Initialize .gitignore with configured default template types"),
-	)
-	s.AddTool(initTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		var buf bytes.Buffer
-		if err := cmdInitTo(&buf, cfg); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return mcp.NewToolResultText(buf.String()), nil
-	})
-
-	// Run the server using stdio transport
 	return server.ServeStdio(s)
+}
+
+// mcpToolHandlers returns the runtime handlers for every MCP tool, keyed by
+// tool name. Schemas live in mcpToolDefs(); cmdServe zips the two together.
+func mcpToolHandlers(cfg *config.Config) map[string]server.ToolHandlerFunc {
+	return map[string]server.ToolHandlerFunc{
+		"gitignore_list": func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			var buf bytes.Buffer
+			if err := cmdListTo(&buf, cfg, ""); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(buf.String()), nil
+		},
+		"gitignore_search": func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			pattern, err := request.RequireString("pattern")
+			if err != nil {
+				return mcp.NewToolResultError("pattern parameter is required"), nil
+			}
+			var buf bytes.Buffer
+			if err := cmdListTo(&buf, cfg, pattern); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(buf.String()), nil
+		},
+		"gitignore_add": func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			templateType, err := request.RequireString("type")
+			if err != nil {
+				return mcp.NewToolResultError("type parameter is required"), nil
+			}
+			var buf bytes.Buffer
+			if err := cmdAddTo(&buf, cfg, templateType); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(buf.String()), nil
+		},
+		"gitignore_delete": func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			templateType, err := request.RequireString("type")
+			if err != nil {
+				return mcp.NewToolResultError("type parameter is required"), nil
+			}
+			var buf bytes.Buffer
+			if err := cmdDeleteTo(&buf, templateType); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(buf.String()), nil
+		},
+		"gitignore_ignore": func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			patterns, err := requireStringArray(request, "patterns")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			var buf bytes.Buffer
+			if err := cmdIgnoreTo(&buf, patterns); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(buf.String()), nil
+		},
+		"gitignore_remove": func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			patterns, err := requireStringArray(request, "patterns")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			var buf bytes.Buffer
+			if err := cmdRemoveTo(&buf, patterns); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(buf.String()), nil
+		},
+		"gitignore_init": func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			var buf bytes.Buffer
+			if err := cmdInitTo(&buf, cfg); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(buf.String()), nil
+		},
+	}
+}
+
+func requireStringArray(request mcp.CallToolRequest, name string) ([]string, error) {
+	raw, ok := request.GetArguments()[name].([]interface{})
+	if !ok || len(raw) == 0 {
+		return nil, fmt.Errorf("%s parameter is required and must be a non-empty array", name)
+	}
+	out := make([]string, 0, len(raw))
+	for _, v := range raw {
+		if s, ok := v.(string); ok {
+			out = append(out, s)
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("%s must contain at least one string", name)
+	}
+	return out, nil
 }
 
 func printUsage() {
