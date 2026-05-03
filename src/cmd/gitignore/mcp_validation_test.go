@@ -9,7 +9,7 @@ import (
 // TestMCPToolSchemaCompliance validates that all MCP tools comply with
 // the MCP Server Standards and JSON Schema specification.
 func TestMCPToolSchemaCompliance(t *testing.T) {
-	tools := createMCPTools()
+	tools := mcpToolDefs()
 
 	for _, tool := range tools {
 		t.Run(tool.Name, func(t *testing.T) {
@@ -92,73 +92,10 @@ func validatePropertySchema(t *testing.T, toolName, propName string, schema map[
 	}
 }
 
-// createMCPTools creates all MCP tools for validation testing.
-// This mirrors the tool definitions in cmdServe() without the handlers.
-func createMCPTools() []mcp.Tool {
-	return []mcp.Tool{
-		// gitignore_list - no parameters
-		mcp.NewTool("gitignore_list",
-			mcp.WithDescription("List all available gitignore templates from configured sources (local, GitHub, Toptal)"),
-		),
-
-		// gitignore_search - string parameter
-		mcp.NewTool("gitignore_search",
-			mcp.WithDescription("Search for gitignore templates by name pattern"),
-			mcp.WithString("pattern",
-				mcp.Required(),
-				mcp.Description("Search pattern to filter templates (case-insensitive substring match)"),
-			),
-		),
-
-		// gitignore_add - string parameter
-		mcp.NewTool("gitignore_add",
-			mcp.WithDescription("Add a gitignore template to .gitignore file in the current directory"),
-			mcp.WithString("type",
-				mcp.Required(),
-				mcp.Description("Template type to add (e.g., 'go', 'github/rust', 'toptal/python')"),
-			),
-		),
-
-		// gitignore_delete - string parameter
-		mcp.NewTool("gitignore_delete",
-			mcp.WithDescription("Remove a gitignore template section from .gitignore file"),
-			mcp.WithString("type",
-				mcp.Required(),
-				mcp.Description("Template type/section name to remove from .gitignore"),
-			),
-		),
-
-		// gitignore_ignore - array parameter (must have items!)
-		mcp.NewTool("gitignore_ignore",
-			mcp.WithDescription("Add one or more patterns directly to .gitignore file"),
-			mcp.WithArray("patterns",
-				mcp.WithStringItems(),
-				mcp.Required(),
-				mcp.Description("Array of patterns to add to .gitignore (e.g., ['node_modules', '*.log', 'dist/'])"),
-			),
-		),
-
-		// gitignore_remove - array parameter (must have items!)
-		mcp.NewTool("gitignore_remove",
-			mcp.WithDescription("Remove one or more patterns from .gitignore file"),
-			mcp.WithArray("patterns",
-				mcp.WithStringItems(),
-				mcp.Required(),
-				mcp.Description("Array of patterns to remove from .gitignore"),
-			),
-		),
-
-		// gitignore_init - no parameters
-		mcp.NewTool("gitignore_init",
-			mcp.WithDescription("Initialize .gitignore with configured default template types"),
-		),
-	}
-}
-
 // TestMCPArrayItemsRequired specifically tests that array parameters have items defined.
 // This is the specific validation that VS Code Copilot requires.
 func TestMCPArrayItemsRequired(t *testing.T) {
-	tools := createMCPTools()
+	tools := mcpToolDefs()
 
 	arrayTools := map[string]string{
 		"gitignore_ignore": "patterns",
@@ -214,7 +151,7 @@ func TestMCPArrayItemsRequired(t *testing.T) {
 
 // TestMCPRequiredParameters validates that required parameters are properly marked
 func TestMCPRequiredParameters(t *testing.T) {
-	tools := createMCPTools()
+	tools := mcpToolDefs()
 
 	expectedRequired := map[string][]string{
 		"gitignore_list":   {},
@@ -266,7 +203,7 @@ func TestMCPRequiredParameters(t *testing.T) {
 
 // TestMCPToolCount validates that all expected tools are defined
 func TestMCPToolCount(t *testing.T) {
-	tools := createMCPTools()
+	tools := mcpToolDefs()
 
 	expectedTools := []string{
 		"gitignore_list",
