@@ -102,78 +102,15 @@ func cmdList(cfg *config.Config, searchPattern string) error {
 }
 
 func cmdListTo(w io.Writer, cfg *config.Config, searchPattern string) error {
-	// Create source manager
 	sm, err := source.NewSourceManager(cfg.LocalTemplatesPath, cfg.TemplateURL, cfg.EnableToptal)
 	if err != nil {
 		return fmt.Errorf("failed to create source manager: %w", err)
 	}
 
-	// Get all files grouped by source
-	filesBySource, err := sm.ListBySource()
-	if err != nil {
-		return fmt.Errorf("failed to list templates: %w", err)
-	}
+	paths, warnings := collectTemplatePaths(sm.ListBySource())
+	sort.Strings(paths)
+	paths = filterPaths(paths, searchPattern)
 
-	// Build flat list of all template paths
-	var allPaths []string
-	var warnings []string
-
-	// Process local templates
-	if localResult, ok := filesBySource["local"]; ok {
-		if localResult.Error != nil {
-			warnings = append(warnings, fmt.Sprintf("⚠️  Local templates: %v (path: %s)", localResult.Error, sm.LocalSource().Dir()))
-		} else {
-			for _, file := range localResult.Files {
-				allPaths = append(allPaths, fmt.Sprintf("local/%s", strings.ToLower(file.Name)))
-			}
-		}
-	}
-
-	// Process remote templates
-	for _, src := range sm.RemoteSources() {
-		result, ok := filesBySource[src.Name()]
-		if !ok {
-			continue
-		}
-
-		if result.Error != nil {
-			msg := fmt.Sprintf("⚠️  %s: %v", formatSourceName(src.Name()), result.Error)
-			if src.Name() == "github" {
-				if gs, ok := src.(*source.GitHubSource); ok {
-					msg += fmt.Sprintf(" (url: %s)", gs.URL())
-				}
-			}
-			warnings = append(warnings, msg)
-			continue
-		}
-
-		for _, file := range result.Files {
-			var path string
-			if file.Category == "" {
-				path = fmt.Sprintf("%s/%s", strings.ToLower(src.Name()), strings.ToLower(file.Name))
-			} else {
-				path = fmt.Sprintf("%s/%s/%s", strings.ToLower(src.Name()), strings.ToLower(file.Category), strings.ToLower(file.Name))
-			}
-			allPaths = append(allPaths, path)
-		}
-	}
-
-	// Sort all paths alphabetically
-	sort.Strings(allPaths)
-
-	// Filter by search pattern if provided
-	if searchPattern != "" {
-		searchLower := strings.ToLower(searchPattern)
-		var filtered []string
-		for _, path := range allPaths {
-			if strings.Contains(path, searchLower) {
-				filtered = append(filtered, path)
-			}
-		}
-		allPaths = filtered
-	}
-
-	// Print warnings first (always to stderr)
 	for _, warn := range warnings {
 		fmt.Fprintln(os.Stderr, warn)
 	}
@@ -181,8 +118,7 @@ func cmdListTo(w io.Writer, cfg *config.Config, searchPattern string) error {
 		fmt.Fprintln(os.Stderr)
 	}
 
-	// Print paths
-	if len(allPaths) == 0 {
+	if len(paths) == 0 {
 		if searchPattern != "" {
 			fmt.Fprintf(w, "No templates matching '%s'\n", searchPattern)
 		} else {
@@ -191,24 +127,69 @@ func cmdListTo(w io.Writer, cfg *config.Config, searchPattern string) error {
 		return nil
 	}
 
-	for _, path := range allPaths {
+	for _, path := range paths {
 		fmt.Fprintln(w, path)
 	}
-
 	return nil
 }
 
-// formatSourceName returns a human-readable source name
-func formatSourceName(source string) string {
-	switch source {
-	case "local":
+// collectTemplatePaths flattens per-source list results into display paths
+// plus diagnostic warning lines for any sources that errored.
+func collectTemplatePaths(results []source.SourceListResult) (paths, warnings []string) {
+	for _, r := range results {
+		if r.Error != nil {
+			warnings = append(warnings, formatSourceWarning(r))
+			continue
+		}
+		for _, file := range r.Files {
+			paths = append(paths, formatTemplatePath(r.Name, file.Category, file.Name))
+		}
+	}
+	return paths, warnings
+}
+
+func filterPaths(paths []string, pattern string) []string {
+	if pattern == "" {
+		return paths
+	}
+	needle := strings.ToLower(pattern)
+	out := paths[:0]
+	for _, p := range paths {
+		if strings.Contains(p, needle) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// formatTemplatePath renders the canonical lowercase "source/[category/]name"
+// path used everywhere we display a template.
+func formatTemplatePath(sourceName, category, name string) string {
+	if category == "" {
+		return fmt.Sprintf("%s/%s", strings.ToLower(sourceName), strings.ToLower(name))
+	}
+	return fmt.Sprintf("%s/%s/%s", strings.ToLower(sourceName), strings.ToLower(category), strings.ToLower(name))
+}
+
+// formatSourceWarning builds the stderr line for a failed-source ListBySource entry.
+func formatSourceWarning(r source.SourceListResult) string {
+	if r.Name == source.NameLocal {
+		return fmt.Sprintf("⚠️  Local templates: %v (path: %s)", r.Error, r.Description)
+	}
+	return fmt.Sprintf("⚠️  %s: %v (url: %s)", formatSourceName(r.Name), r.Error, r.Description)
+}
+
+// formatSourceName returns a human-readable source name.
+func formatSourceName(name string) string {
+	switch name {
+	case source.NameLocal:
 		return "Local"
-	case "github":
+	case source.NameGitHub:
 		return "GitHub"
-	case "toptal":
+	case source.NameToptal:
 		return "Toptal"
 	default:
-		return source
+		return name
 	}
 }
 
@@ -247,14 +228,7 @@ func cmdAddTo(w io.Writer, cfg *config.Config, templateType string) error {
 		return err
 	}
 
-	// Build display path like list/search (lowercase source/category/name)
-	var displayPath string
-	if file.Category == "" {
-		displayPath = fmt.Sprintf("%s/%s", strings.ToLower(file.Source), strings.ToLower(file.Name))
-	} else {
-		displayPath = fmt.Sprintf("%s/%s/%s", strings.ToLower(file.Source), strings.ToLower(file.Category), strings.ToLower(file.Name))
-	}
-	fmt.Fprintf(w, "Added '%s' to .gitignore\n", displayPath)
+	fmt.Fprintf(w, "Added '%s' to .gitignore\n", formatTemplatePath(file.Source, file.Category, file.Name))
 	return nil
 }
 
@@ -340,14 +314,7 @@ func cmdInitTo(w io.Writer, cfg *config.Config) error {
 			continue
 		}
 
-		// Build display path like list/search (lowercase source/category/name)
-		var displayPath string
-		if file.Category == "" {
-			displayPath = fmt.Sprintf("%s/%s", strings.ToLower(file.Source), strings.ToLower(file.Name))
-		} else {
-			displayPath = fmt.Sprintf("%s/%s/%s", strings.ToLower(file.Source), strings.ToLower(file.Category), strings.ToLower(file.Name))
-		}
-		fmt.Fprintf(w, "  Added '%s'\n", displayPath)
+		fmt.Fprintf(w, "  Added '%s'\n", formatTemplatePath(file.Source, file.Category, file.Name))
 		addedCount++
 	}
 
