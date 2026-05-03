@@ -34,7 +34,12 @@ func NewToptalSourceWithURL(baseURL string) *ToptalSource {
 
 // Name returns the source name
 func (t *ToptalSource) Name() string {
-	return "toptal"
+	return NameToptal
+}
+
+// Describe returns the configured Toptal API base URL.
+func (t *ToptalSource) Describe() string {
+	return t.baseURL
 }
 
 // BaseURL returns the base URL for the Toptal API
@@ -77,7 +82,7 @@ func (t *ToptalSource) List() ([]TemplateFile, error) {
 			Name:     name,
 			Path:     name,
 			Category: "",
-			Source:   "toptal",
+			Source:   NameToptal,
 		})
 	}
 
@@ -116,17 +121,5 @@ func (t *ToptalSource) Get(name string) (*TemplateFile, string, error) {
 
 // Find finds a template by name (case-insensitive)
 func (t *ToptalSource) Find(name string) (*TemplateFile, error) {
-	files, err := t.List()
-	if err != nil {
-		return nil, err
-	}
-
-	nameLower := strings.ToLower(name)
-	for _, file := range files {
-		if strings.ToLower(file.Name) == nameLower {
-			return &file, nil
-		}
-	}
-
-	return nil, fmt.Errorf("Toptal template '%s' not found", name)
+	return findByList(t, name)
 }

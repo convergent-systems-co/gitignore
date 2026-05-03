@@ -102,78 +102,15 @@ func cmdList(cfg *config.Config, searchPattern string) error {
 }
 
 func cmdListTo(w io.Writer, cfg *config.Config, searchPattern string) error {
-	// Create source manager
 	sm, err := source.NewSourceManager(cfg.LocalTemplatesPath, cfg.TemplateURL, cfg.EnableToptal)
 	if err != nil {
 		return fmt.Errorf("failed to create source manager: %w", err)
 	}
 
-	// Get all files grouped by source
-	filesBySource, err := sm.ListBySource()
-	if err != nil {
-		return fmt.Errorf("failed to list templates: %w", err)
-	}
+	paths, warnings := collectTemplatePaths(sm.ListBySource())
+	sort.Strings(paths)
+	paths = filterPaths(paths, searchPattern)
 
-	// Build flat list of all template paths
-	var allPaths []string
-	var warnings []string
-
-	// Process local templates
-	if localResult, ok := filesBySource["local"]; ok {
-		if localResult.Error != nil {
-			warnings = append(warnings, fmt.Sprintf("⚠️  Local templates: %v (path: %s)", localResult.Error, sm.LocalSource().Dir()))
-		} else {
-			for _, file := range localResult.Files {
-				allPaths = append(allPaths, fmt.Sprintf("local/%s", strings.ToLower(file.Name)))
-			}
-		}
-	}
-
-	// Process remote templates
-	for _, src := range sm.RemoteSources() {
-		result, ok := filesBySource[src.Name()]
-		if !ok {
-			continue
-		}
-
-		if result.Error != nil {
-			msg := fmt.Sprintf("⚠️  %s: %v", formatSourceName(src.Name()), result.Error)
-			if src.Name() == "github" {
-				if gs, ok := src.(*source.GitHubSource); ok {
-					msg += fmt.Sprintf(" (url: %s)", gs.URL())
-				}
-			}
-			warnings = append(warnings, msg)
-			continue
-		}
-
-		for _, file := range result.Files {
-			var path string
-			if file.Category == "" {
-				path = fmt.Sprintf("%s/%s", strings.ToLower(src.Name()), strings.ToLower(file.Name))
-			} else {
-				path = fmt.Sprintf("%s/%s/%s", strings.ToLower(src.Name()), strings.ToLower(file.Category), strings.ToLower(file.Name))
-			}
-			allPaths = append(allPaths, path)
-		}
-	}
-
-	// Sort all paths alphabetically
-	sort.Strings(allPaths)
-
-	// Filter by search pattern if provided
-	if searchPattern != "" {
-		searchLower := strings.ToLower(searchPattern)
-		var filtered []string
-		for _, path := range allPaths {
-			if strings.Contains(path, searchLower) {
-				filtered = append(filtered, path)
-			}
-		}
-		allPaths = filtered
-	}
-
-	// Print warnings first (always to stderr)
 	for _, warn := range warnings {
 		fmt.Fprintln(os.Stderr, warn)
 	}
@@ -181,8 +118,7 @@ func cmdListTo(w io.Writer, cfg *config.Config, searchPattern string) error {
 		fmt.Fprintln(os.Stderr)
 	}
 
-	// Print paths
-	if len(allPaths) == 0 {
+	if len(paths) == 0 {
 		if searchPattern != "" {
 			fmt.Fprintf(w, "No templates matching '%s'\n", searchPattern)
 		} else {
@@ -191,24 +127,69 @@ func cmdListTo(w io.Writer, cfg *config.Config, searchPattern string) error {
 		return nil
 	}
 
-	for _, path := range allPaths {
+	for _, path := range paths {
 		fmt.Fprintln(w, path)
 	}
-
 	return nil
 }
 
-// formatSourceName returns a human-readable source name
-func formatSourceName(source string) string {
-	switch source {
-	case "local":
+// collectTemplatePaths flattens per-source list results into display paths
+// plus diagnostic warning lines for any sources that errored.
+func collectTemplatePaths(results []source.SourceListResult) (paths, warnings []string) {
+	for _, r := range results {
+		if r.Error != nil {
+			warnings = append(warnings, formatSourceWarning(r))
+			continue
+		}
+		for _, file := range r.Files {
+			paths = append(paths, formatTemplatePath(r.Name, file.Category, file.Name))
+		}
+	}
+	return paths, warnings
+}
+
+func filterPaths(paths []string, pattern string) []string {
+	if pattern == "" {
+		return paths
+	}
+	needle := strings.ToLower(pattern)
+	out := paths[:0]
+	for _, p := range paths {
+		if strings.Contains(p, needle) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// formatTemplatePath renders the canonical lowercase "source/[category/]name"
+// path used everywhere we display a template.
+func formatTemplatePath(sourceName, category, name string) string {
+	if category == "" {
+		return fmt.Sprintf("%s/%s", strings.ToLower(sourceName), strings.ToLower(name))
+	}
+	return fmt.Sprintf("%s/%s/%s", strings.ToLower(sourceName), strings.ToLower(category), strings.ToLower(name))
+}
+
+// formatSourceWarning builds the stderr line for a failed-source ListBySource entry.
+func formatSourceWarning(r source.SourceListResult) string {
+	if r.Name == source.NameLocal {
+		return fmt.Sprintf("⚠️  Local templates: %v (path: %s)", r.Error, r.Description)
+	}
+	return fmt.Sprintf("⚠️  %s: %v (url: %s)", formatSourceName(r.Name), r.Error, r.Description)
+}
+
+// formatSourceName returns a human-readable source name.
+func formatSourceName(name string) string {
+	switch name {
+	case source.NameLocal:
 		return "Local"
-	case "github":
+	case source.NameGitHub:
 		return "GitHub"
-	case "toptal":
+	case source.NameToptal:
 		return "Toptal"
 	default:
-		return source
+		return name
 	}
 }
 
@@ -247,14 +228,7 @@ func cmdAddTo(w io.Writer, cfg *config.Config, templateType string) error {
 		return err
 	}
 
-	// Build display path like list/search (lowercase source/category/name)
-	var displayPath string
-	if file.Category == "" {
-		displayPath = fmt.Sprintf("%s/%s", strings.ToLower(file.Source), strings.ToLower(file.Name))
-	} else {
-		displayPath = fmt.Sprintf("%s/%s/%s", strings.ToLower(file.Source), strings.ToLower(file.Category), strings.ToLower(file.Name))
-	}
-	fmt.Fprintf(w, "Added '%s' to .gitignore\n", displayPath)
+	fmt.Fprintf(w, "Added '%s' to .gitignore\n", formatTemplatePath(file.Source, file.Category, file.Name))
 	return nil
 }
 
@@ -340,14 +314,7 @@ func cmdInitTo(w io.Writer, cfg *config.Config) error {
 			continue
 		}
 
-		// Build display path like list/search (lowercase source/category/name)
-		var displayPath string
-		if file.Category == "" {
-			displayPath = fmt.Sprintf("%s/%s", strings.ToLower(file.Source), strings.ToLower(file.Name))
-		} else {
-			displayPath = fmt.Sprintf("%s/%s/%s", strings.ToLower(file.Source), strings.ToLower(file.Category), strings.ToLower(file.Name))
-		}
-		fmt.Fprintf(w, "  Added '%s'\n", displayPath)
+		fmt.Fprintf(w, "  Added '%s'\n", formatTemplatePath(file.Source, file.Category, file.Name))
 		addedCount++
 	}
 
@@ -412,167 +379,120 @@ func cmdRemoveTo(w io.Writer, patterns []string) error {
 
 // cmdServe starts an MCP server that exposes gitignore tools
 func cmdServe() error {
-	// Load configuration once for reuse across tool calls
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	// Create MCP server
 	s := server.NewMCPServer(
 		"gitignore",
 		getVersion(),
 		server.WithToolCapabilities(true),
 	)
 
-	// Register gitignore_list tool
-	listTool := mcp.NewTool("gitignore_list",
-		mcp.WithDescription("List all available gitignore templates from configured sources (local, GitHub, Toptal)"),
-	)
-	s.AddTool(listTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		var buf bytes.Buffer
-		if err := cmdListTo(&buf, cfg, ""); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
+	handlers := mcpToolHandlers(cfg)
+	for _, def := range mcpToolDefs() {
+		h, ok := handlers[def.Name]
+		if !ok {
+			return fmt.Errorf("missing handler for MCP tool %q", def.Name)
 		}
-		return mcp.NewToolResultText(buf.String()), nil
-	})
+		s.AddTool(def, h)
+	}
 
-	// Register gitignore_search tool
-	searchTool := mcp.NewTool("gitignore_search",
-		mcp.WithDescription("Search for gitignore templates by name pattern"),
-		mcp.WithString("pattern",
-			mcp.Required(),
-			mcp.Description("Search pattern to filter templates (case-insensitive substring match)"),
-		),
-	)
-	s.AddTool(searchTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		pattern, err := request.RequireString("pattern")
-		if err != nil {
-			return mcp.NewToolResultError("pattern parameter is required"), nil
-		}
-		var buf bytes.Buffer
-		if err := cmdListTo(&buf, cfg, pattern); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return mcp.NewToolResultText(buf.String()), nil
-	})
-
-	// Register gitignore_add tool
-	addTool := mcp.NewTool("gitignore_add",
-		mcp.WithDescription("Add a gitignore template to .gitignore file in the current directory"),
-		mcp.WithString("type",
-			mcp.Required(),
-			mcp.Description("Template type to add (e.g., 'go', 'github/rust', 'toptal/python')"),
-		),
-	)
-	s.AddTool(addTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		templateType, err := request.RequireString("type")
-		if err != nil {
-			return mcp.NewToolResultError("type parameter is required"), nil
-		}
-		var buf bytes.Buffer
-		if err := cmdAddTo(&buf, cfg, templateType); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return mcp.NewToolResultText(buf.String()), nil
-	})
-
-	// Register gitignore_delete tool
-	deleteTool := mcp.NewTool("gitignore_delete",
-		mcp.WithDescription("Remove a gitignore template section from .gitignore file"),
-		mcp.WithString("type",
-			mcp.Required(),
-			mcp.Description("Template type/section name to remove from .gitignore"),
-		),
-	)
-	s.AddTool(deleteTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		templateType, err := request.RequireString("type")
-		if err != nil {
-			return mcp.NewToolResultError("type parameter is required"), nil
-		}
-		var buf bytes.Buffer
-		if err := cmdDeleteTo(&buf, templateType); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return mcp.NewToolResultText(buf.String()), nil
-	})
-
-	// Register gitignore_ignore tool
-	ignoreTool := mcp.NewTool("gitignore_ignore",
-		mcp.WithDescription("Add one or more patterns directly to .gitignore file"),
-		mcp.WithArray("patterns",
-			mcp.WithStringItems(),
-			mcp.Required(),
-			mcp.Description("Array of patterns to add to .gitignore (e.g., ['node_modules', '*.log', 'dist/'])"),
-		),
-	)
-	s.AddTool(ignoreTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		args := request.GetArguments()
-		patternsRaw, ok := args["patterns"].([]interface{})
-		if !ok || len(patternsRaw) == 0 {
-			return mcp.NewToolResultError("patterns parameter is required and must be a non-empty array"), nil
-		}
-		patterns := make([]string, 0, len(patternsRaw))
-		for _, p := range patternsRaw {
-			if ps, ok := p.(string); ok {
-				patterns = append(patterns, ps)
-			}
-		}
-		if len(patterns) == 0 {
-			return mcp.NewToolResultError("patterns must contain at least one string"), nil
-		}
-		var buf bytes.Buffer
-		if err := cmdIgnoreTo(&buf, patterns); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return mcp.NewToolResultText(buf.String()), nil
-	})
-
-	// Register gitignore_remove tool
-	removeTool := mcp.NewTool("gitignore_remove",
-		mcp.WithDescription("Remove one or more patterns from .gitignore file"),
-		mcp.WithArray("patterns",
-			mcp.WithStringItems(),
-			mcp.Required(),
-			mcp.Description("Array of patterns to remove from .gitignore"),
-		),
-	)
-	s.AddTool(removeTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		args := request.GetArguments()
-		patternsRaw, ok := args["patterns"].([]interface{})
-		if !ok || len(patternsRaw) == 0 {
-			return mcp.NewToolResultError("patterns parameter is required and must be a non-empty array"), nil
-		}
-		patterns := make([]string, 0, len(patternsRaw))
-		for _, p := range patternsRaw {
-			if ps, ok := p.(string); ok {
-				patterns = append(patterns, ps)
-			}
-		}
-		if len(patterns) == 0 {
-			return mcp.NewToolResultError("patterns must contain at least one string"), nil
-		}
-		var buf bytes.Buffer
-		if err := cmdRemoveTo(&buf, patterns); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return mcp.NewToolResultText(buf.String()), nil
-	})
-
-	// Register gitignore_init tool
-	initTool := mcp.NewTool("gitignore_init",
-		mcp.WithDescription("Initialize .gitignore with configured default template types"),
-	)
-	s.AddTool(initTool, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		var buf bytes.Buffer
-		if err := cmdInitTo(&buf, cfg); err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		return mcp.NewToolResultText(buf.String()), nil
-	})
-
-	// Run the server using stdio transport
 	return server.ServeStdio(s)
+}
+
+// mcpToolHandlers returns the runtime handlers for every MCP tool, keyed by
+// tool name. Schemas live in mcpToolDefs(); cmdServe zips the two together.
+func mcpToolHandlers(cfg *config.Config) map[string]server.ToolHandlerFunc {
+	return map[string]server.ToolHandlerFunc{
+		"gitignore_list": func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			var buf bytes.Buffer
+			if err := cmdListTo(&buf, cfg, ""); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(buf.String()), nil
+		},
+		"gitignore_search": func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			pattern, err := request.RequireString("pattern")
+			if err != nil {
+				return mcp.NewToolResultError("pattern parameter is required"), nil
+			}
+			var buf bytes.Buffer
+			if err := cmdListTo(&buf, cfg, pattern); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(buf.String()), nil
+		},
+		"gitignore_add": func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			templateType, err := request.RequireString("type")
+			if err != nil {
+				return mcp.NewToolResultError("type parameter is required"), nil
+			}
+			var buf bytes.Buffer
+			if err := cmdAddTo(&buf, cfg, templateType); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(buf.String()), nil
+		},
+		"gitignore_delete": func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			templateType, err := request.RequireString("type")
+			if err != nil {
+				return mcp.NewToolResultError("type parameter is required"), nil
+			}
+			var buf bytes.Buffer
+			if err := cmdDeleteTo(&buf, templateType); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(buf.String()), nil
+		},
+		"gitignore_ignore": func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			patterns, err := requireStringArray(request, "patterns")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			var buf bytes.Buffer
+			if err := cmdIgnoreTo(&buf, patterns); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(buf.String()), nil
+		},
+		"gitignore_remove": func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			patterns, err := requireStringArray(request, "patterns")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			var buf bytes.Buffer
+			if err := cmdRemoveTo(&buf, patterns); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(buf.String()), nil
+		},
+		"gitignore_init": func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			var buf bytes.Buffer
+			if err := cmdInitTo(&buf, cfg); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(buf.String()), nil
+		},
+	}
+}
+
+func requireStringArray(request mcp.CallToolRequest, name string) ([]string, error) {
+	raw, ok := request.GetArguments()[name].([]interface{})
+	if !ok || len(raw) == 0 {
+		return nil, fmt.Errorf("%s parameter is required and must be a non-empty array", name)
+	}
+	out := make([]string, 0, len(raw))
+	for _, v := range raw {
+		if s, ok := v.(string); ok {
+			out = append(out, s)
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("%s must contain at least one string", name)
+	}
+	return out, nil
 }
 
 func printUsage() {
