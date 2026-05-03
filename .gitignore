@@ -48,3 +48,11 @@ go.work.sum
 ### START: ignored/.claude/
 .claude/
 ### END: ignored/.claude/
+
+### START: ignored/checkpoint.md
+checkpoint.md
+### END: ignored/checkpoint.md
+
+### START: ignored/.wrangler/
+.wrangler/
+### END: ignored/.wrangler/
