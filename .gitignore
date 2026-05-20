@@ -758,3 +758,6 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
 ### END: Node
+
+# AI tooling state (checkpoints, transient logs)
+.ai/
