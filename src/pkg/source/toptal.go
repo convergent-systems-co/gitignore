@@ -89,6 +89,25 @@ func (t *ToptalSource) List() ([]TemplateFile, error) {
 	return files, nil
 }
 
+// toptalAliases maps requested template names that Toptal does not expose
+// under that key to the canonical Toptal key that covers them. JetBrains IDEs
+// (PyCharm, GoLand, etc.) share one "jetbrains" template upstream, so the
+// IDE-specific names alias to it. A direct catalog match always wins over an
+// alias (see Find), so this only kicks in when the literal name is absent.
+var toptalAliases = map[string]string{
+	"pycharm": "jetbrains",
+	"goland":  "jetbrains",
+}
+
+// resolveAlias returns the canonical Toptal key for name, or name unchanged
+// when no alias applies. Matching is case-insensitive.
+func resolveAlias(name string) string {
+	if canonical, ok := toptalAliases[strings.ToLower(name)]; ok {
+		return canonical
+	}
+	return name
+}
+
 // Get returns the content of a template by name
 func (t *ToptalSource) Get(name string) (*TemplateFile, string, error) {
 	file, err := t.Find(name)
@@ -96,7 +115,9 @@ func (t *ToptalSource) Get(name string) (*TemplateFile, string, error) {
 		return nil, "", err
 	}
 
-	contentURL := fmt.Sprintf("%s/%s", t.baseURL, url.PathEscape(name))
+	// Fetch by the resolved catalog name so aliases (e.g. pycharm -> jetbrains)
+	// hit the endpoint Toptal actually serves.
+	contentURL := fmt.Sprintf("%s/%s", t.baseURL, url.PathEscape(file.Name))
 	resp, err := t.httpClient.Get(contentURL)
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to fetch Toptal template content: %w", err)
@@ -119,7 +140,18 @@ func (t *ToptalSource) Get(name string) (*TemplateFile, string, error) {
 	return file, string(content), nil
 }
 
-// Find finds a template by name (case-insensitive)
+// Find finds a template by name (case-insensitive). A literal catalog match
+// wins; when the name is absent but aliases to a known JetBrains-style key,
+// the aliased template is returned instead so IDE-specific names still resolve.
 func (t *ToptalSource) Find(name string) (*TemplateFile, error) {
-	return findByList(t, name)
+	file, err := findByList(t, name)
+	if err == nil {
+		return file, nil
+	}
+
+	aliased := resolveAlias(name)
+	if aliased == name {
+		return nil, err
+	}
+	return findByList(t, aliased)
 }
