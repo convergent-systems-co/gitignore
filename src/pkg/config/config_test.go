@@ -279,3 +279,64 @@ func TestDefaultLocalTemplatesPath(t *testing.T) {
 		t.Errorf("expected default LocalTemplatesPath %s, got %s", expected, cfg.LocalTemplatesPath)
 	}
 }
+
+func TestScaffoldStarterConfigWritesFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, "nested", ConfigFileName)
+
+	written, err := ScaffoldStarterConfig(path)
+	if err != nil {
+		t.Fatalf("ScaffoldStarterConfig returned error: %v", err)
+	}
+	if !written {
+		t.Fatal("expected written=true for a fresh path")
+	}
+
+	// The scaffolded file must load and contain default types.
+	cfg, err := LoadFromPath(path)
+	if err != nil {
+		t.Fatalf("failed to load scaffolded config: %v", err)
+	}
+	if len(cfg.DefaultTypes) == 0 {
+		t.Error("scaffolded config must contain a gitignore.default-types line")
+	}
+}
+
+func TestScaffoldStarterConfigDoesNotOverwrite(t *testing.T) {
+	tmpDir := t.TempDir()
+	path := filepath.Join(tmpDir, ConfigFileName)
+
+	existing := "gitignore.template.url = https://github.com/existing/repo\n"
+	if err := os.WriteFile(path, []byte(existing), 0644); err != nil {
+		t.Fatalf("failed to seed existing config: %v", err)
+	}
+
+	written, err := ScaffoldStarterConfig(path)
+	if err != nil {
+		t.Fatalf("ScaffoldStarterConfig returned error: %v", err)
+	}
+	if written {
+		t.Error("expected written=false when the file already exists")
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read config: %v", err)
+	}
+	if string(got) != existing {
+		t.Errorf("existing config was modified; got %q", string(got))
+	}
+}
+
+func TestCanonicalConfigPath(t *testing.T) {
+	got, err := CanonicalConfigPath()
+	if err != nil {
+		t.Fatalf("CanonicalConfigPath returned error: %v", err)
+	}
+
+	home, _ := os.UserHomeDir()
+	expected := filepath.Join(home, ".config", "gitignore", ConfigFileName)
+	if got != expected {
+		t.Errorf("expected canonical path %s, got %s", expected, got)
+	}
+}
