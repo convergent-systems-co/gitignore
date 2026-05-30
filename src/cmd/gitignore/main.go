@@ -69,6 +69,11 @@ func run(args []string) error {
 		return cmdAdd(cfg, args[1])
 	case "init":
 		return cmdInit(cfg)
+	case "config":
+		if len(args) < 2 || args[1] != "init" {
+			return fmt.Errorf("usage: gitignore config init")
+		}
+		return cmdConfigInit()
 	case "delete", "rm":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: gitignore delete <type>")
@@ -260,9 +265,7 @@ func cmdInit(cfg *config.Config) error {
 
 func cmdInitTo(w io.Writer, cfg *config.Config) error {
 	if len(cfg.DefaultTypes) == 0 {
-		fmt.Fprintln(w, "No default types configured.")
-		fmt.Fprintln(w, "Add 'gitignore.default-types = github/go, github/global/macos' to your config file.")
-		return nil
+		return errNoDefaultTypes()
 	}
 
 	// Create source manager
@@ -319,6 +322,53 @@ func cmdInitTo(w io.Writer, cfg *config.Config) error {
 	}
 
 	fmt.Fprintf(w, "\nDone: %d added, %d skipped\n", addedCount, skippedCount)
+	return nil
+}
+
+// errNoDefaultTypes builds the error returned by `init` when no default types
+// are configured. It names the config file path(s) the tool actually checks so
+// the user knows where to add a gitignore.default-types line, and points them at
+// the scaffolding command. Returning an error (rather than printing and exiting
+// 0) is what makes `gitignore init` exit non-zero in this case.
+func errNoDefaultTypes() error {
+	var hint string
+	if paths, err := config.GetConfigPaths(); err == nil && len(paths) > 0 {
+		hint = "\nAdd 'gitignore.default-types = github/go, github/global/macos' to one of:"
+		for _, p := range paths {
+			hint += "\n  " + p
+		}
+		hint += "\nOr run 'gitignore config init' to scaffold a starter config."
+	} else {
+		hint = "\nAdd a 'gitignore.default-types' line to your gitignorerc," +
+			" or run 'gitignore config init' to scaffold one."
+	}
+	return fmt.Errorf("no default types configured%s", hint)
+}
+
+func cmdConfigInit() error {
+	return cmdConfigInitTo(os.Stdout)
+}
+
+// cmdConfigInitTo scaffolds a starter gitignorerc at the canonical config path.
+// It refuses to overwrite an existing file and always reports the path it acted on.
+func cmdConfigInitTo(w io.Writer) error {
+	path, err := config.CanonicalConfigPath()
+	if err != nil {
+		return fmt.Errorf("failed to resolve config path: %w", err)
+	}
+
+	written, err := config.ScaffoldStarterConfig(path)
+	if err != nil {
+		return err
+	}
+
+	if !written {
+		fmt.Fprintf(w, "Config already exists, leaving it untouched: %s\n", path)
+		return nil
+	}
+
+	fmt.Fprintf(w, "Wrote starter config: %s\n", path)
+	fmt.Fprintln(w, "Edit 'gitignore.default-types' to taste, then run 'gitignore init'.")
 	return nil
 }
 
@@ -506,6 +556,7 @@ Usage:
   gitignore ignore <pattern>    Add a path/pattern directly to .gitignore
   gitignore remove <pattern>    Remove a path/pattern added via ignore
   gitignore init                Initialize .gitignore with configured default types
+  gitignore config init         Scaffold a starter gitignorerc config file
   gitignore serve               Start MCP server for AI assistant integration
   gitignore --help              Show this help message
   gitignore --version           Show version information
@@ -524,6 +575,7 @@ Examples:
   gitignore remove /dist/       # Remove /dist/ pattern from .gitignore
   gitignore remove node_modules # Remove node_modules from .gitignore
   gitignore init                # Add all default types from config
+  gitignore config init         # Create ~/.config/gitignore/gitignorerc
   gitignore serve               # Start MCP server (for AI assistants)
 
 Template Sources (in priority order):

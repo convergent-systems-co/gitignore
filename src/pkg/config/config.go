@@ -170,3 +170,58 @@ func GetConfigPaths() ([]string, error) {
 		filepath.Join(home, "."+ConfigFileName),
 	}, nil
 }
+
+// CanonicalConfigPath returns the preferred location for a freshly scaffolded
+// config file: ~/.config/gitignore/gitignorerc. This is the first entry in
+// GetConfigPaths and follows the XDG-style layout used elsewhere in the tool.
+func CanonicalConfigPath() (string, error) {
+	paths, err := GetConfigPaths()
+	if err != nil {
+		return "", err
+	}
+	if len(paths) == 0 {
+		return "", fmt.Errorf("no config paths available")
+	}
+	return paths[0], nil
+}
+
+// starterConfigContents is the body written by ScaffoldStarterConfig. It is a
+// commented template so a new user can see every supported key, with a sensible
+// gitignore.default-types line active out of the box.
+const starterConfigContents = `# gitignore configuration
+# See: https://github.com/convergent-systems-co/gitignore
+
+# GitHub repository URL for templates
+gitignore.template.url = ` + DefaultTemplateURL + `
+
+# Enable Toptal API as a fallback source
+# enable.toptal.gitignore = false
+
+# Path to local templates directory
+# gitignore.local-templates-path = ~/.config/gitignore/templates
+
+# Default types added by 'gitignore init'
+gitignore.default-types = github/go, github/global/macos, github/global/visualstudiocode
+`
+
+// ScaffoldStarterConfig writes a starter config to path, creating any missing
+// parent directories. It never overwrites an existing file: if path already
+// exists it returns (false, nil) so the caller can tell the user the path was
+// left untouched. On a successful write it returns (true, nil).
+func ScaffoldStarterConfig(path string) (written bool, err error) {
+	if _, statErr := os.Stat(path); statErr == nil {
+		return false, nil // Already present; do not clobber the user's config.
+	} else if !os.IsNotExist(statErr) {
+		return false, fmt.Errorf("checking config path %s: %w", path, statErr)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return false, fmt.Errorf("creating config directory for %s: %w", path, err)
+	}
+
+	if err := os.WriteFile(path, []byte(starterConfigContents), 0o644); err != nil {
+		return false, fmt.Errorf("writing config to %s: %w", path, err)
+	}
+
+	return true, nil
+}
