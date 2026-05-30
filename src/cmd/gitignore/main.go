@@ -152,10 +152,11 @@ func filterPaths(paths []string, pattern string) []string {
 	if pattern == "" {
 		return paths
 	}
-	needle := strings.ToLower(pattern)
+	// Use the same predicate as `add`'s resolver so search and add stay
+	// consistent: anything search lists here, add can resolve (issue #6).
 	out := paths[:0]
 	for _, p := range paths {
-		if strings.Contains(p, needle) {
+		if source.MatchesQuery(p, pattern) {
 			out = append(out, p)
 		}
 	}

@@ -142,15 +142,86 @@ func (sm *SourceManager) ParseSourcePrefix(templateType string) (string, string,
 	return "", templateType, false
 }
 
+// TemplatePath renders the canonical lowercase "source/[category/]name" path
+// for a template. This is the single string against which both `search` and
+// `add` match a user query, so the two commands stay consistent (issue #6).
+func TemplatePath(f TemplateFile) string {
+	source := strings.ToLower(f.Source)
+	name := strings.ToLower(f.Name)
+	if f.Category == "" {
+		return source + "/" + name
+	}
+	return source + "/" + strings.ToLower(f.Category) + "/" + name
+}
+
+// MatchesQuery is the shared predicate behind both `gitignore search` and the
+// fuzzy fallback in `gitignore add`: a query matches when it is a
+// case-insensitive substring of the template's canonical path. Keeping a
+// single predicate guarantees that anything `search` surfaces, `add` can also
+// resolve.
+func MatchesQuery(templatePath, query string) bool {
+	return strings.Contains(strings.ToLower(templatePath), strings.ToLower(query))
+}
+
+// Resolve maps a user query to a single template using the same matching that
+// `gitignore search` uses for display. It first honors an exact match (by
+// canonical path or bare name, case-insensitive) so unambiguous, fully
+// qualified requests are stable; failing that it falls back to the search
+// substring match. An ambiguous substring query (more than one match, none
+// exact) is an error rather than a silent arbitrary pick.
+func (sm *SourceManager) Resolve(query string) (*TemplateFile, error) {
+	files, err := sm.List()
+	if err != nil {
+		return nil, err
+	}
+
+	queryLower := strings.ToLower(query)
+	var substringMatches []TemplateFile
+	for _, f := range files {
+		path := TemplatePath(f)
+		// Exact match on the canonical path or the bare name wins immediately.
+		if path == queryLower || strings.ToLower(f.Name) == queryLower {
+			match := f
+			return &match, nil
+		}
+		if MatchesQuery(path, query) {
+			substringMatches = append(substringMatches, f)
+		}
+	}
+
+	switch len(substringMatches) {
+	case 0:
+		return nil, fmt.Errorf("template '%s' not found in any source", query)
+	case 1:
+		match := substringMatches[0]
+		return &match, nil
+	default:
+		paths := make([]string, len(substringMatches))
+		for i, f := range substringMatches {
+			paths[i] = TemplatePath(f)
+		}
+		return nil, fmt.Errorf("template '%s' is ambiguous; matches: %s", query, strings.Join(paths, ", "))
+	}
+}
+
 // GetAny retrieves a template, handling source prefixes automatically.
 // If templateType has a source prefix (e.g., "github/rust"), fetches from
-// that source. Otherwise uses priority order.
+// that source. Otherwise it resolves the name with the same matcher `search`
+// uses, then fetches the resolved template from its owning source so that
+// every name `search` finds is also addable (issue #6).
 func (sm *SourceManager) GetAny(templateType string) (*TemplateFile, string, error) {
 	sourceName, templateName, hasPrefix := sm.ParseSourcePrefix(templateType)
 	if hasPrefix {
 		return sm.GetFromSource(sourceName, templateName)
 	}
-	return sm.Get(templateType)
+
+	resolved, err := sm.Resolve(templateType)
+	if err != nil {
+		return nil, "", err
+	}
+	// Fetch by the resolved template's real name from its owning source. The
+	// resolved name is exact, so this is a direct hit, not another fuzzy pass.
+	return sm.GetFromSource(resolved.Source, resolved.Name)
 }
 
 // Find finds a template by name, walking sources in priority order.

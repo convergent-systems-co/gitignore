@@ -209,6 +209,125 @@ func TestGet_FallbackOnError(t *testing.T) {
 	}
 }
 
+// resolveFixture mirrors the real github/gitignore layout closely enough to
+// reproduce issue #6: some templates are reachable only via a path-substring
+// match (what `search` does), not via the exact name/full-path match that
+// `add` historically used.
+func resolveFixture() *SourceManager {
+	return &SourceManager{
+		sources: []Source{
+			&mockSource{
+				name: "github",
+				files: []TemplateFile{
+					{Name: "Go", Category: "", Source: "github"},
+					{Name: "Python", Category: "", Source: "github"},
+					{Name: "Terraform", Category: "", Source: "github"},
+					{Name: "Perl", Category: "", Source: "github"},
+					{Name: "macOS", Category: "Global", Source: "github"},
+					{Name: "JetBrains", Category: "Global", Source: "github"},
+					{Name: "MicrosoftOffice", Category: "Global", Source: "github"},
+				},
+				content: map[string]string{
+					"Go":              "# Go",
+					"Python":          "# Python",
+					"Terraform":       "# Terraform",
+					"Perl":            "# Perl",
+					"macOS":           "# macOS",
+					"JetBrains":       "# JetBrains",
+					"MicrosoftOffice": "# MS Office",
+				},
+			},
+		},
+	}
+}
+
+// searchResolves reports the single template path that `gitignore search
+// <query>` would surface, or "" when search returns zero or many results. It
+// is the reference the resolver must agree with (issue #6 acceptance).
+func searchResolves(sm *SourceManager, query string) string {
+	files, err := sm.List()
+	if err != nil {
+		return ""
+	}
+	var matched []string
+	for _, f := range files {
+		if MatchesQuery(TemplatePath(f), query) {
+			matched = append(matched, TemplatePath(f))
+		}
+	}
+	if len(matched) != 1 {
+		return ""
+	}
+	return matched[0]
+}
+
+// TestResolveMatchesSearch is the issue #6 regression: every name that
+// `search` resolves to exactly one template must be resolvable by `add`'s
+// resolver, returning that same template. The previously-broken cases (perl,
+// microsoftoffice) sit alongside the cases that already worked.
+func TestResolveMatchesSearch(t *testing.T) {
+	tests := []struct {
+		name     string
+		query    string
+		wantPath string
+	}{
+		// Cases the issue reports as already working.
+		{"go top-level", "go", "github/go"},
+		{"python top-level", "python", "github/python"},
+		{"terraform top-level", "terraform", "github/terraform"},
+		{"macos global", "macos", "github/global/macos"},
+		{"jetbrains global", "jetbrains", "github/global/jetbrains"},
+		// Cases the issue reports as broken under `add`.
+		{"perl top-level", "perl", "github/perl"},
+		{"microsoftoffice global", "microsoftoffice", "github/global/microsoftoffice"},
+		// Substring-only match: query is not an exact name, so the old
+		// exact-match `add` could never resolve it even though `search` did.
+		{"office substring", "office", "github/global/microsoftoffice"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sm := resolveFixture()
+
+			// Guard: confirm search itself resolves to the expected single path.
+			if got := searchResolves(sm, tt.query); got != tt.wantPath {
+				t.Fatalf("search(%q) = %q, want %q (test fixture wrong)", tt.query, got, tt.wantPath)
+			}
+
+			file, err := sm.Resolve(tt.query)
+			if err != nil {
+				t.Fatalf("Resolve(%q) error: %v", tt.query, err)
+			}
+			if got := TemplatePath(*file); got != tt.wantPath {
+				t.Errorf("Resolve(%q) = %q, want %q (must match search)", tt.query, got, tt.wantPath)
+			}
+		})
+	}
+}
+
+// TestGetAnyMatchesSearch exercises the same parity through the public GetAny
+// path that `add` actually calls, including content retrieval.
+func TestGetAnyMatchesSearch(t *testing.T) {
+	for _, query := range []string{"perl", "microsoftoffice", "office", "macos", "go"} {
+		sm := resolveFixture()
+		want := searchResolves(sm, query)
+		if want == "" {
+			t.Fatalf("fixture: search(%q) did not resolve to a single template", query)
+		}
+
+		file, content, err := sm.GetAny(query)
+		if err != nil {
+			t.Fatalf("GetAny(%q) error: %v", query, err)
+		}
+		if got := TemplatePath(*file); got != want {
+			t.Errorf("GetAny(%q) resolved %q, want %q", query, got, want)
+		}
+		if content == "" {
+			t.Errorf("GetAny(%q) returned empty content", query)
+		}
+	}
+}
+
 func TestGetFromSource(t *testing.T) {
 	// Test that GetFromSource retrieves from a specific source
 	sm := &SourceManager{
