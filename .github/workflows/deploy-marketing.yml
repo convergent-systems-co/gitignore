@@ -1,0 +1,101 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: 24
+
+jobs:
+  deploy-landing:
+    name: Deploy Landing Page
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Build
+        working-directory: web
+        run: npm run build
+
+      - name: Landing deploy is gated until a Pages project is configured
+        if: ${{ vars.CLOUDFLARE_LANDING_PAGES_PROJECT == '' }}
+        run: echo "Skipping landing deploy because vars.CLOUDFLARE_LANDING_PAGES_PROJECT is not configured."
+
+      - name: Create temporary deploy token
+        id: cf_token
+        env:
+          CLOUDFLARE_MGMT_TOKEN: ${{ secrets.CLOUDFLARE_MGMT_TOKEN }}
+        run: |
+          EXPIRY=$(date -u -d "+8 hours" +"%Y-%m-%dT%H:%M:%SZ")
+          PAYLOAD=$(jq -n --arg name "deploy-$(date +%s)" --arg expires "$EXPIRY" '{name: $name, expires_on: $expires, policies: [{effect: "allow", resources: {"com.cloudflare.api.account.e1fe0f0ce8ff18da4edc118372c30022": "*"}, permission_groups: [{id: "8d28297797f24fb8a0c332fe0866ec89", name: "Pages Write"},{id: "e247aedd66bd41cc9193af0213416666", name: "Pages Read"}]}]}')
+          RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/e1fe0f0ce8ff18da4edc118372c30022/tokens" -H "Authorization: Bearer $CLOUDFLARE_MGMT_TOKEN" -H "Content-Type: application/json" -d "$PAYLOAD")
+          TOKEN_ID=$(echo "$RESPONSE" | jq -r '.result.id // empty')
+          TOKEN_VAL=$(echo "$RESPONSE" | jq -r '.result.value // empty')
+          [ -z "$TOKEN_VAL" ] && echo "Failed: $(echo "$RESPONSE" | jq '.errors')" && exit 1
+          echo "::add-mask::$TOKEN_VAL"
+          echo "token_id=$TOKEN_ID" >> "$GITHUB_OUTPUT"
+          echo "token_val=$TOKEN_VAL" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy to Cloudflare Pages
+        # workingDirectory: web is critical. Without it, wrangler resolves
+        # the Pages Functions directory to <repo-root>/functions/ (which
+        # does not exist) instead of web/functions/, and every /api/* and
+        # /v1/* path silently falls through to the SPA fallback.
+        if: ${{ vars.CLOUDFLARE_LANDING_PAGES_PROJECT != '' }}
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ steps.cf_token.outputs.token_val }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: web
+          command: pages deploy dist --project-name=${{ vars.CLOUDFLARE_LANDING_PAGES_PROJECT }} --branch=main
+
+      - name: Revoke temporary deploy token
+        if: always()
+        env:
+          CLOUDFLARE_MGMT_TOKEN: ${{ secrets.CLOUDFLARE_MGMT_TOKEN }}
+        run: |
+          TOKEN_ID="${{ steps.cf_token.outputs.token_id }}"
+          [ -z "$TOKEN_ID" ] && exit 0
+          curl -s -X DELETE "https://api.cloudflare.com/client/v4/accounts/e1fe0f0ce8ff18da4edc118372c30022/tokens/$TOKEN_ID" -H "Authorization: Bearer $CLOUDFLARE_MGMT_TOKEN"
+
+  verify-monitor:
+    name: Verify Local Monitor Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/monitor/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web/monitor
+        run: npm ci
+
+      - name: Build
+        working-directory: web/monitor
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          VITE_API_URL: https://api.olympus.sh
+        run: npm run build
